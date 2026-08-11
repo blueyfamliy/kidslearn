@@ -1,0 +1,188 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phone layout (imported LAST so it overrides the per-component stylesheets).
+
+   The app was built for a desktop window; on a ~360px phone the fixed card
+   widths, the big emoji and the 20px page padding pushed content past the
+   edges and left buttons off-screen. Everything here is scoped to a width
+   media query, so the desktop/Electron look is untouched.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Never let a stray wide child cause a sideways scroll on a phone. */
+@media (max-width: 780px) {
+  html, body { max-width: 100%; overflow-x: hidden; }
+}
+
+@media (max-width: 600px) {
+  #root { padding: 12px 10px 24px; }
+
+  /* ── Home screen ──────────────────────────────────────────────────────── */
+  .home { gap: 20px; }
+  .home-title h1 { font-size: 2.1rem; }
+  .home-title p { font-size: 1.05rem; }
+  .home-stars { font-size: 1.1rem; }
+
+  .home-cards { gap: 14px; width: 100%; }
+  /* Fixed 220px cards left a dead gutter and squeezed the text; full-width
+     cards read far better on a phone. */
+  .child-card {
+    width: 100%;
+    max-width: 100%;
+    padding: 22px 18px;
+  }
+  .child-emoji, .add-plus { height: 76px; font-size: 3.2rem; }
+  .child-photo { width: 76px; height: 76px; }
+  .child-name { font-size: 1.35rem; }
+
+  /* The corner buttons were 28-30px — under the 44px minimum touch target,
+     so small fingers kept missing them. */
+  .card-delete, .card-edit, .card-rewards, .card-mistakes {
+    width: 40px;
+    height: 40px;
+    font-size: 1rem;
+  }
+
+  .home-actions { flex-wrap: wrap; justify-content: center; }
+  .edit-btn, .parents-btn, .upgrade-btn { min-height: 44px; padding: 11px 18px; }
+
+  /* Was 32px — too small to hit, and it's the only way out of a modal. */
+  button.modal-close { width: 44px; height: 44px; font-size: 1.1rem; }
+
+  /* Add/edit child modal: 6 avatar columns made 37px targets on a 360px
+     screen. Five columns clears 44px. */
+  .avatar-grid { grid-template-columns: repeat(5, 1fr); }
+  button.photo-btn { min-height: 44px; }
+  .modal-actions button, .modal button[type="submit"] { min-height: 46px; }
+
+  .subject-picker { padding: 24px 16px; width: 100%; }
+  .subject-pick-row { gap: 10px; }
+  .subject-pick-btn { padding: 16px 8px; font-size: 1rem; min-width: 0; }
+  .subject-pick-icon { font-size: 2rem; }
+
+  /* ── Session shell ────────────────────────────────────────────────────── */
+  .session { gap: 14px; }
+  .session-header { padding: 12px 14px; }
+  .back-btn { min-height: 44px; padding: 10px 16px; }
+
+  /* Operation picker: three 150px tiles + gaps overflowed a 360px screen. */
+  .op-picker { min-height: 0; gap: 20px; }
+  .op-picker-title { font-size: 1.45rem; }
+  .op-row { gap: 10px; width: 100%; }
+  .op-btn {
+    width: auto;
+    flex: 1 1 30%;
+    min-width: 0;
+    min-height: 112px;
+    border-radius: 18px;
+    gap: 6px;
+  }
+  .op-icon { font-size: 2.3rem; }
+  .op-text { font-size: 1.05rem; }
+  .op-back { min-height: 44px; }
+
+  .topic-row { gap: 8px; }
+  .topic-btn { width: 30%; min-width: 92px; min-height: 84px; }
+  .topic-icon { font-size: 1.7rem; }
+  .topic-text { font-size: 0.82rem; }
+
+  /* ── Exercise card ────────────────────────────────────────────────────── */
+  .exercise-card {
+    padding: 18px 12px 22px;
+    gap: 14px;
+    min-height: 0;
+  }
+  /* The feedback banner sits absolutely at the bottom of the card — without
+     room reserved for it, it covered the last row of answer buttons. */
+  .exercise-card:has(.feedback-banner) { padding-bottom: 60px; }
+
+  .big-image { font-size: 5.4rem; }
+  .big-letter { font-size: 4.4rem; }
+  .big-shape { font-size: 4rem; }
+  .big-shape.long { font-size: 2.3rem; }
+  .big-word { font-size: 1.9rem; letter-spacing: 2px; }
+
+  .ex-question { font-size: 1.25rem; overflow-wrap: anywhere; }
+  .ex-question[dir="ltr"] { font-size: 1.5rem; letter-spacing: 1px; }
+  .ex-question.long-text { font-size: 1.05rem; }
+  .ex-question-row { gap: 8px; }
+
+  .options-grid { gap: 8px; }
+  .option-btn { padding: 14px 8px; font-size: 1.05rem; min-height: 52px; overflow-wrap: anywhere; }
+  .option-btn.emoji-only .opt-text { font-size: 2.7rem; }
+  .option-btn .opt-img { font-size: 2.6rem; }
+  .option-btn.symbol-opt .opt-text { font-size: 2.1rem; }
+
+  .letter-grid { gap: 8px; }
+  .letter-grid-btn { width: 52px; height: 52px; font-size: 1.4rem; }
+
+  .input-row { max-width: 100%; }
+  .input-row input { font-size: 1.15rem; padding: 12px 10px; }
+  .submit-btn { min-height: 48px; padding: 12px 16px; }
+  .kbd-input-display { min-width: 0; font-size: 1.4rem; }
+  .teach-btn { min-height: 48px; }
+
+  /* ── Hebrew keyboard ──────────────────────────────────────────────────── */
+  .hebrew-kbd { padding: 10px 6px; }
+  .kbd-row { gap: 4px; }
+  /* Fixed 38px keys forced a ragged wrap; letting them flex keeps full rows. */
+  .kbd-key {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 30px;
+    max-width: 44px;
+    height: 46px;
+    font-size: 1.15rem;
+  }
+  .kbd-actions { gap: 8px; }
+  .kbd-back, .kbd-submit { flex: 1 1 auto; max-width: none; }
+  .kbd-back { width: auto; }
+  .kbd-submit { width: auto; }
+
+  /* ── Result screen ────────────────────────────────────────────────────── */
+  .result-card { padding: 24px 16px; gap: 14px; }
+  .result-emoji { font-size: 3.6rem; }
+  .result-title { font-size: 1.25rem; }
+  .score-num { font-size: 2.3rem; }
+
+  /* ── Mistakes / parents screens ───────────────────────────────────────── */
+  .mistakes-screen { padding: 14px 12px 48px; }
+  .mistakes-header h1 { font-size: 1.35rem; }
+  /* Ellipsised question text still needs a floor, or the row collapses. */
+  .mi-q { min-width: 0; }
+  .practice-btn, .practice-all { min-height: 44px; }
+
+  .parents-screen { padding: 14px 12px 48px; }
+  .quota-name { min-width: 0; }
+
+  /* The email form is a `1fr 120px` grid, but the inputs' min-content width
+     kept the first column at 200px — the grid overflowed its card and the
+     port field ended up off the left edge of the screen. One column on a
+     phone, and min-width:0 so a long value shrinks instead of pushing out. */
+  .form-grid { grid-template-columns: 1fr; }
+  .form-grid label, .form-grid input { min-width: 0; }
+  .form-grid input { width: 100%; }
+  .email-settings { padding: 16px 14px; }
+  .btn-primary, .btn-secondary { min-width: 0; min-height: 46px; }
+
+  /* Checkboxes were 20-22px — hard to hit accurately. */
+  input[type="checkbox"], input[type="radio"] { width: 26px; height: 26px; }
+}
+
+/* Very small phones (≤360px) — the last squeeze. */
+@media (max-width: 360px) {
+  .op-btn { min-height: 100px; }
+  .op-icon { font-size: 2rem; }
+  .op-text { font-size: 0.95rem; }
+  .letter-grid-btn { width: 46px; height: 46px; }
+  .kbd-key { min-width: 27px; height: 44px; font-size: 1.05rem; }
+  .big-image { font-size: 4.6rem; }
+  .ex-question[dir="ltr"] { font-size: 1.35rem; }
+}
+
+/* Landscape phone: vertical space is the scarce resource, not width. */
+@media (max-height: 480px) and (orientation: landscape) {
+  #root { padding: 8px 10px 16px; justify-content: flex-start; }
+  .big-image { font-size: 3.4rem; }
+  .big-letter, .big-shape { font-size: 3rem; }
+  .exercise-card { padding: 12px 12px 16px; gap: 10px; }
+  .op-picker { min-height: 0; gap: 12px; }
+}

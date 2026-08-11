@@ -4,8 +4,9 @@ import ExerciseSession from './components/ExerciseSession';
 import ParentsScreen from './components/ParentsScreen';
 import MistakesScreen from './components/MistakesScreen';
 import AuthScreen from './components/AuthScreen';
-import { IS_WEB, meAccount, logoutAccount, completeGoogleRedirect } from './api';
+import { IS_WEB, meAccount, logoutAccount } from './api';
 import './App.css';
+import './mobile.css';   // phone overrides — must load last
 
 // Account session — WEB ONLY. The installed desktop app never asks to
 // register or log in: the family's children and history live locally on the
@@ -26,31 +27,16 @@ export default function App() {
   useEffect(() => {
     if (!IS_WEB) return;
     let alive = true;
-
-    // Back from Google? The URL hash carries a Supabase access token —
-    // exchange it for a local session before anything else.
-    completeGoogleRedirect()
+    const stored = loadAuth();
+    if (!stored?.token) { setAuthReady(true); return; }
+    meAccount(stored.token)
       .then(r => {
-        if (!alive || !r?.ok) return null;
-        const a = { token: r.token, email: r.user.email, name: r.user.name };
-        saveAuth(a);
-        setAuth(a);
-        return a;
+        if (!alive) return;
+        if (r?.ok) setAuth({ token: stored.token, email: r.user.email, name: r.user.name });
+        else { clearAuth(); setAuth(null); }   // stale token → sign in again
       })
-      .catch(() => null)   // failed/expired Google redirect → regular sign-in
-      .then(googleSession => {
-        if (!alive || googleSession) { if (alive) setAuthReady(true); return; }
-        const stored = loadAuth();
-        if (!stored?.token) { setAuthReady(true); return; }
-        meAccount(stored.token)
-          .then(r => {
-            if (!alive) return;
-            if (r?.ok) setAuth({ token: stored.token, email: r.user.email, name: r.user.name });
-            else { clearAuth(); setAuth(null); }   // stale token → sign in again
-          })
-          .catch(() => {})                          // transient error: keep the stored session
-          .finally(() => { if (alive) setAuthReady(true); });
-      });
+      .catch(() => {})                          // transient error: keep the stored session
+      .finally(() => { if (alive) setAuthReady(true); });
     return () => { alive = false; };
   }, []);
 

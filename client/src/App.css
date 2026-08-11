@@ -24,15 +24,25 @@ body {
     linear-gradient(135deg, #667eea 0%, #764ba2 55%, #8e54a8 100%);
   background-attachment: fixed;
   min-height: 100vh;
+  /* On Android Chrome 100vh counts the area BEHIND the address bar, so the
+     bottom of every screen (submit button, keyboard) sat under it and could
+     not be tapped. dvh is the real visible height; vh stays as the fallback. */
+  min-height: 100dvh;
   direction: rtl;
 }
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  /* `safe` matters on phones: with plain `center`, content taller than the
+     screen overflows past the TOP of the scroll container and the first
+     buttons become unreachable — you simply cannot scroll up to them. */
   align-items: center;
   justify-content: center;
+  align-items: safe center;
+  justify-content: safe center;
   padding: 20px;
 }
 
