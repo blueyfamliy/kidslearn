@@ -29,9 +29,10 @@ import {
   ssoVerify, deviceEmail, createSsoCode, exchangeSsoCode, listAccounts,
 } from './auth.js';
 import {
-  startGoogleFlow, finishGoogleFlow, setGoogleResult, takeGoogleResult,
-  GOOGLE_CALLBACK_PATH,
-} from './supabaseAuth.js';
+  startGoogleFlow, verifyFirebaseIdToken, setGoogleResult, takeGoogleResult,
+  validState, googleSignInPage, GOOGLE_SIGNIN_PATH,
+} from './firebaseAuth.js';
+import { cloudRouter } from './cloudRoutes.js';
 import { spawn } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -60,6 +61,12 @@ const app = express();
 app.use(cors());
 // Allow larger bodies so child photos (base64 data URLs) fit comfortably
 app.use(express.json({ limit: '8mb' }));
+
+// ── KidsLearn Cloud ────────────────────────────────────────────────────────
+// The developer platform: /cloud (console), /oauth/* ("Login with KidsLearn")
+// and /api/v1/* (public API behind an API key). Mounted before the SPA
+// fallback so its pages win over index.html.
+app.use(cloudRouter);
 
 // ── Accounts (local register / login) ─────────────────────────────────────
 // Passwords are hashed server-side; the client keeps only an opaque token.
@@ -339,7 +346,7 @@ const NASHER_START = '<!-- KidsLearn Sign-In (added by NASHER) START -->';
 const NASHER_END = '<!-- KidsLearn Sign-In (added by NASHER) END -->';
 
 // Providers NASHER can wire TODAY. Google rides on KidsLearn's existing
-// Google sign-in (Supabase) — the app's button opens the authorize page with
+// Google sign-in (Firebase) — the app's button opens the authorize page with
 // provider=google, which verifies the person with Google before the code.
 // Microsoft/Apple need developer-console registration (Apple is paid) and are
 // shown in NASHER as "coming soon".
@@ -551,9 +558,10 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-// ── "Sign in with Google" (via the KIDS LEARN Supabase project) ────────────
+// ── "Sign in with Google" (via Firebase Authentication) ────────────────────
 // Google refuses to show its sign-in page inside app windows, so we open the
-// system browser and it lands back on /auth/callback below.
+// system browser on our local /auth/google page, which runs the Firebase
+// popup and posts the verified ID token back to /complete below.
 function openInBrowser(url) {
   try {
     if (process.platform === 'win32') {
@@ -585,18 +593,26 @@ app.get('/api/auth/google/start', (req, res) => {
   res.json({ ok: true, url, opened });
 });
 
-app.get(GOOGLE_CALLBACK_PATH, async (req, res) => {
-  const { code, error, error_description: errDesc } = req.query || {};
+app.get(GOOGLE_SIGNIN_PATH, (req, res) => {
+  const state = String((req.query || {}).state || '');
+  if (!validState(state)) {
+    return res.status(400).send(googlePage(false, 'ההתחברות פגה', 'חזרו ל-KidsLearn ונסו שוב'));
+  }
+  res.send(googleSignInPage(state));
+});
+
+app.post('/api/auth/google/complete', async (req, res) => {
   try {
-    if (error || !code) throw new Error(String(errDesc || 'ההתחברות בוטלה'));
-    const identity = await finishGoogleFlow(code);
+    const { state, idToken } = req.body || {};
+    if (!validState(state)) throw new Error('ההתחברות פגה — חזרו לאפליקציה ונסו שוב');
+    const identity = await verifyFirebaseIdToken(idToken);
     const r = externalLogin(identity);
     if (r.error) throw new Error(r.error);
     rememberDevice(r.user.email);   // family machine stays signed in
     setGoogleResult({ token: r.token, user: r.user });
-    res.send(googlePage(true, 'ההתחברות הצליחה!', 'אפשר לסגור את החלון הזה ולחזור ל-KidsLearn'));
+    res.json({ ok: true });
   } catch (e) {
-    res.status(400).send(googlePage(false, 'ההתחברות לא הושלמה', e.message));
+    res.status(400).json({ error: e.message });
   }
 });
 
@@ -698,6 +714,38 @@ read_word: 'קריאת מילה',
   en_translate_to_en: 'אנגלית – תרגום לאנגלית',
   en_missing_letter: 'אנגלית – אות חסרה',
   en_spell: 'אנגלית – כתיבת מילה',
+  en_next_letter: 'אנגלית – האות הבאה',
+  en_upper_lower: 'אנגלית – אות קטנה/גדולה',
+  en_last_letter: 'אנגלית – אות אחרונה',
+  en_number_word: 'אנגלית – מספרים',
+  en_number_big: 'אנגלית – מספרים גדולים',
+  en_count: 'אנגלית – ספירה',
+  en_color: 'אנגלית – צבעים',
+  en_verb: 'אנגלית – פעלים',
+  en_opposite: 'אנגלית – הפכים',
+  en_odd_one_out: 'אנגלית – מה לא שייך',
+  en_plural: 'אנגלית – יחיד ורבים',
+  en_scramble: 'אנגלית – סידור אותיות',
+  en_sentence_fill: 'אנגלית – השלמת משפט',
+  en_phrase: 'אנגלית – ביטויים',
+  en_a_an: 'אנגלית – a / an',
+  en_preposition: 'אנגלית – מילות מקום',
+  en_pronoun: 'אנגלית – כינויי גוף',
+  en_be: 'אנגלית – am / is / are',
+  en_verb_ing: 'אנגלית – הווה ממושך',
+  en_past_tense: 'אנגלית – זמן עבר',
+  en_comparative: 'אנגלית – השוואה',
+  en_question_word: 'אנגלית – מילות שאלה',
+  en_reply: 'אנגלית – שיחה',
+  en_day: 'אנגלית – ימי השבוע',
+  en_month: 'אנגלית – חודשים',
+  en_time: 'אנגלית – שעה',
+  en_riddle: 'אנגלית – חידות',
+  en_category_name: 'אנגלית – קבוצות',
+  en_word_order: 'אנגלית – סדר מילים',
+  en_listen_spell: 'אנגלית – הקשבה וכתיבה',
+  en_reading: 'אנגלית – קטע קריאה',
+  en_sight_word: 'אנגלית – מילות קישור',
 };
 
 // Review questions resurface per child AND per subject, so a kid who learns

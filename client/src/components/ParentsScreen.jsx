@@ -564,6 +564,38 @@ export default function ParentsScreen({ onBack }) {
             </div>
           )}
 
+          {!IS_WEB && (
+            <div className="section">
+              <h2>☁️ KidsLearn Cloud — למפתחים</h2>
+              <p style={{ color: '#607d8b', lineHeight: 1.7, margin: '0 0 12px' }}>
+                בונים אפליקציה משלכם? קבלו <b>Client ID</b> ו-<b>Client Secret</b> לכפתור
+                "התחברות עם KidsLearn", ו-<b>API Key</b> לגישה למנוע התרגילים — הכול בקונסולת המפתחים.
+              </p>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => window.open('/cloud', '_blank')}
+                  style={{
+                    background: 'linear-gradient(135deg,#5c6bc0,#3949ab)', color: '#fff',
+                    border: 'none', borderRadius: 12, padding: '11px 22px',
+                    fontSize: '1rem', fontWeight: 800, cursor: 'pointer',
+                  }}
+                >
+                  🔑 פתחו את הקונסולה
+                </button>
+                <button
+                  onClick={() => window.open('/cloud/docs', '_blank')}
+                  style={{
+                    background: '#eceff1', color: '#37474f',
+                    border: 'none', borderRadius: 12, padding: '11px 22px',
+                    fontSize: '1rem', fontWeight: 800, cursor: 'pointer',
+                  }}
+                >
+                  📚 תיעוד
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="section">
             <h2>📚 היסטוריית מפגשים ({history.length})</h2>
             <div className="sessions-list">
