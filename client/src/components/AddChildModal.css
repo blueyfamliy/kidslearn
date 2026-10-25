@@ -7,6 +7,7 @@
   justify-content: center;
   z-index: 100;
   padding: 20px;
+  overflow-y: auto;
   animation: fade 0.15s ease;
 }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -14,12 +15,29 @@
 .modal {
   background: #fff;
   border-radius: 22px;
-  padding: 28px 26px 26px;
+  padding: 28px 26px 20px;
   width: 100%;
   max-width: 380px;
   position: relative;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   animation: pop 0.18s ease;
+  /* Never grow past the screen — the form scrolls inside instead, so the
+     save button at the bottom is always visible and clickable. */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow: hidden;
+}
+
+.modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* bleed to the modal edges so the scrollbar hugs the side */
+  margin: 0 -26px;
+  padding: 0 26px 4px;
 }
 @keyframes pop { from { transform: scale(0.94); } to { transform: scale(1); } }
 
@@ -185,7 +203,9 @@
   font-weight: 700;
   font-family: inherit;
   cursor: pointer;
-  margin-top: 4px;
+  margin-top: 10px;
+  flex: 0 0 auto;
+  box-shadow: 0 -2px 10px rgba(255, 255, 255, 0.9);
 }
 .modal-save:disabled { opacity: 0.6; cursor: default; }
 

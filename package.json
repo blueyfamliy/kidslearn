@@ -1,7 +1,7 @@
 {
   "name": "kidslearn",
   "productName": "KidsLearn",
-  "version": "1.4.0",
+  "version": "1.6.4",
   "description": "אפליקציית לימוד יומית לילדים",
   "main": "electron/main.cjs",
   "private": true,
@@ -10,6 +10,10 @@
     "dev:server": "cd server && node --watch index.js",
     "dev:client": "cd client && npm run dev",
     "install:all": "cd client && npm install && cd ../server && npm install",
+    "lexi:test": "node server/ml/kernels.test.js && node server/ml/gradcheck.js && node server/ml/attention.test.js && node server/ml/checkpoint.test.js && node server/ml/validator.test.js && node server/ml/e2e.test.js",
+    "lexi:train": "node server/ml/train.js",
+    "lexi:mine": "node server/ml/mine.js --modes he_add,he_sub --target 500 --out server/ml/skeletons.js",
+    "lexi:report": "node server/ml/report.js",
     "build:client": "cd client && npm run build",
     "electron": "electron .",
     "dist": "npm run build:client && electron-builder --win",
@@ -19,9 +23,8 @@
     "dist:all": "npm run build:client && electron-builder -mwl"
   },
   "dependencies": {
-    "cors": "^2.8.6",
     "express": "^4.22.2",
-    "nodemailer": "^6.10.1"
+    "nodemailer": "^9.0.5"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
@@ -45,6 +48,19 @@
       "!server/server.log",
       "!server/server.err",
       "!server/.env",
+      "!server/ml/*.test.js",
+      "!server/ml/gradcheck.js",
+      "!server/ml/train.js",
+      "!server/ml/mine.js",
+      "!server/ml/report.js",
+      "!server/ml/README.md",
+      "!server/ml/checkpoint.json",
+      "!server/ml/tensor.js",
+      "!server/ml/model.js",
+      "!server/ml/generate.js",
+      "!server/ml/patterns.js",
+      "!server/ml/corpus.js",
+      "!server/ml/runtime.js",
       "client/dist/**/*",
       "kidslearn.ico",
       "package.json"

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchEmailConfig, saveEmailConfig, testEmail } from '../api';
+import { fetchEmailConfig, saveEmailConfig, testEmail, verifyEmail } from '../api';
 import './EmailSettings.css';
 
 export default function EmailSettings() {
@@ -17,6 +17,7 @@ export default function EmailSettings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   async function reloadConfig() {
     const c = await fetchEmailConfig();
@@ -55,6 +56,20 @@ export default function EmailSettings() {
     setSaving(false);
   }
 
+  async function handleVerify() {
+    setVerifying(true);
+    setStatus(null);
+    try {
+      const result = await verifyEmail();
+      setStatus(result.ok
+        ? { type: 'success', msg: `✅ ההתחברות ל-${result.user} תקינה. לא נשלח מייל.` }
+        : { type: 'error', msg: '❌ ' + (result.error || 'ההתחברות נכשלה') });
+    } catch (err) {
+      setStatus({ type: 'error', msg: '❌ ' + err.message });
+    }
+    setVerifying(false);
+  }
+
   async function handleTest() {
     setTesting(true);
     setStatus(null);
@@ -86,6 +101,14 @@ export default function EmailSettings() {
           <span>{cfg.enabled ? 'פעיל' : 'כבוי'}</span>
         </label>
       </div>
+
+      {/* The settings could look complete while nothing was being sent — the
+          only trace was a console line on a server nobody reads. Say it here. */}
+      {cfg.blockedText && (
+        <div className="email-blocked">
+          ⚠️ <b>דוחות לא נשלחים כרגע.</b> {cfg.blockedText}
+        </div>
+      )}
 
 
       <div className="form-grid">
@@ -165,7 +188,13 @@ export default function EmailSettings() {
         <button className="btn-primary" onClick={handleSave} disabled={saving || testing}>
           {saving ? '💾 שומר...' : '💾 שמור הגדרות'}
         </button>
-        <button className="btn-secondary" onClick={handleTest} disabled={saving || testing}>
+        {/* Checking the login and sending a test are different questions. The
+            first one answers "are my credentials right?" without putting mail
+            on the wire — and tells you so without emailing anybody. */}
+        <button className="btn-secondary" onClick={handleVerify} disabled={saving || testing || verifying}>
+          {verifying ? '🔑 בודק...' : '🔑 בדיקת התחברות (בלי לשלוח)'}
+        </button>
+        <button className="btn-secondary" onClick={handleTest} disabled={saving || testing || verifying}>
           {testing ? '📤 שולח...' : '📤 שלח מייל בדיקה'}
         </button>
       </div>

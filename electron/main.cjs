@@ -115,7 +115,8 @@ async function createWindow() {
     height: 860,
     minWidth: 800,
     minHeight: 600,
-    title: 'KidsLearn',
+    // Version in the title bar — the fastest way to tell which build is open.
+    title: `KidsLearn v${app.getVersion()}`,
     icon: getResourcePath('kidslearn.ico'),
     autoHideMenuBar: true,
     webPreferences: {

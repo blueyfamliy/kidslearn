@@ -1,0 +1,21 @@
+{
+  "name": "KidsLearn — אפליקציית לימוד יומית לילדים",
+  "short_name": "KidsLearn",
+  "description": "תרגילי חשבון, גאומטריה ועברית עם הקראה — תרגול יומי בדפדפן, עם דוח יומי להורים.",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f3f0ff",
+  "theme_color": "#667eea",
+  "categories": ["education", "kids"],
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/deanavraham-bit/kidslearn/main/build/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -113,6 +113,12 @@ async function serverTestEmail() {
   return res.json();
 }
 
+// Checks the SMTP login only — authenticates and disconnects, no mail is sent.
+async function serverVerifyEmail() {
+  const res = await fetch(`${BASE}/config/email/verify`, { method: 'POST' });
+  return res.json();
+}
+
 // ── Background removal (desktop only — proxies to the configured API) ──────
 async function serverRemoveBackground(image) {
   const res = await fetch(`${BASE}/remove-bg`, {
@@ -237,6 +243,11 @@ export const deleteChild      = WEB ? local.deleteChild      : serverDeleteChild
 export const fetchEmailConfig = WEB ? local.fetchEmailConfig : serverFetchEmailConfig;
 export const saveEmailConfig  = WEB ? local.saveEmailConfig  : serverSaveEmailConfig;
 export const testEmail        = WEB ? local.testEmail        : serverTestEmail;
+export const verifyEmail      = WEB ? local.verifyEmail      : serverVerifyEmail;
+export const googleLoginStart  = WEB ? (async () => { throw new Error('web'); }) : serverGoogleStart;
+export const googleLoginResult = WEB ? (async () => ({ pending: true }))        : serverGoogleResult;
+// Web only: Firebase Authentication popup → verified Google identity → local session.
+export const googleFirebaseLogin = WEB ? local.googleFirebaseLogin : (async () => { throw new Error('desktop'); });
 export const removeBackground = WEB ? local.removeBackground : serverRemoveBackground;
 export const fetchBgConfig    = WEB ? local.fetchBgConfig    : serverFetchBgConfig;
 export const saveBgConfig     = WEB ? local.saveBgConfig     : serverSaveBgConfig;
@@ -248,12 +259,6 @@ export const logoutAccount    = WEB ? local.logoutAccount    : serverLogout;
 export const deviceLogin      = WEB ? (async () => { throw new Error('web'); }) : serverDeviceLogin;
 export const fetchMagicBox    = WEB ? (async () => ({ unlocked: false })) : serverFetchMagicBox;
 export const openMagicBox     = WEB ? (async () => { throw new Error('web'); }) : serverOpenMagicBox;
-export const googleLoginStart  = WEB ? local.googleLoginStart  : serverGoogleStart;
-export const googleLoginResult = WEB ? local.googleLoginResult : serverGoogleResult;
-// Web only: turn a Supabase #access_token redirect (back from Google) into a session.
-export const completeGoogleRedirect = WEB ? local.completeGoogleRedirect : (async () => null);
-// Web only: Google Identity Services — the official button's JWT → local session.
-export const googleCredentialLogin = WEB ? local.googleCredentialLogin : (async () => { throw new Error('desktop'); });
-export const GOOGLE_WEB_CLIENT_ID = local.GOOGLE_WEB_CLIENT_ID;
+// Desktop only: the server opens the system browser, the app polls for the result.
 
 export const IS_WEB = WEB;

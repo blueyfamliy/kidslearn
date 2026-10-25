@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { fetchChildren, deleteChild, IS_WEB } from '../api';
 import AddChildModal from './AddChildModal';
 import RewardsModal from './RewardsModal';
+import { APP_VERSION } from '../version';
 import './HomeScreen.css';
 
 const SUBJECT_DESC = {
@@ -69,7 +70,7 @@ export default function HomeScreen({ onSelect, onMistakes, onParents }) {
   return (
     <div className="home">
       <div className="home-title">
-        <div className="home-stars">⭐ KidsLearn ⭐</div>
+        <div className="home-stars">⭐ KidsLearn ⭐ <span className="app-version">v{APP_VERSION}</span></div>
         <h1>ברוכים הבאים!</h1>
         <p>{!loading && children.length === 0 ? 'הוסיפו ילד/ה כדי להתחיל ✨' : 'מי רוצה ללמוד היום?'}</p>
       </div>

@@ -166,3 +166,15 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* Why no report arrived. Previously this failed silently: the form looked
+   filled in and the only signal was a server log line nobody sees. */
+.email-blocked {
+  margin: 10px 0 4px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background: #fff3e0;
+  color: #e65100;
+  line-height: 1.6;
+  font-size: 0.95rem;
+}

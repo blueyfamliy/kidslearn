@@ -3,7 +3,9 @@ import { fetchStats, fetchHistory, fetchChildren, fetchInsights, updateChild, fe
 import { PREP_TRACKS, stageName, STREAK_TO_ADVANCE, HEBREW_STAGES, ENGLISH_STAGES } from '../../../server/exercises/curriculum.js';
 import EmailSettings from './EmailSettings';
 import BgRemovalSettings from './BgRemovalSettings';
+import LexiLogo from './LexiLogo';
 import './ParentsScreen.css';
+import { LEXI_INFO } from '../../../server/ml/pool.js';
 
 const TYPE_LABELS = {
   addition: 'חיבור',
@@ -221,7 +223,7 @@ function PlanEditor({ profile, onSaved }) {
 
   useEffect(() => {
     setPlan({ ...(profile?.dailyPlan || {}) });
-    setUntil(profile?.planUntil || '2026-08-31');
+    setUntil(profile?.planUntil || '');      // empty = no end date
     setSavedMsg(false);
   }, [profile?.id]);
 
@@ -229,6 +231,9 @@ function PlanEditor({ profile, onSaved }) {
   const subjects = Array.isArray(profile.subjects) && profile.subjects.length
     ? profile.subjects
     : [profile.subject || 'math'];
+
+  const today = new Date().toISOString().slice(0, 10);
+  const expired = !!until && until < today && subjects.some(s => plan[s] > 0);
 
   async function save() {
     setSaving(true);
@@ -265,14 +270,32 @@ function PlanEditor({ profile, onSaved }) {
           </label>
         ))}
         <label className="quota-row">
-          <span className="quota-name">עד תאריך</span>
+          <span className="quota-name">עד תאריך (לא חובה)</span>
           <input type="date" value={until} onChange={e => setUntil(e.target.value)} />
         </label>
       </div>
+
+      {/* An end date that has passed switches the quota off. That used to happen
+          silently — sessions just got shorter than the number on this screen. */}
+      {expired && (
+        <div className="quota-expired">
+          ⚠️ המכסה <b>לא פעילה</b> — תאריך הסיום ({until}) כבר עבר, ולכן המפגשים
+          חוזרים לאורך הרגיל שלהם במקום למספר שמוגדר כאן.
+          {' '}
+          <button className="quota-clear" onClick={() => setUntil('')}>
+            הסרת תאריך הסיום
+          </button>
+          {' '}ואז שמירה.
+        </div>
+      )}
+
       <button className="quota-save" onClick={save} disabled={saving}>
         {saving ? 'שומר...' : savedMsg ? '✓ נשמר!' : '💾 שמור מכסה'}
       </button>
-      <div className="hint-text">💡 0 = בלי חובה יומית. המפגשים מתאימים את עצמם למכסה אוטומטית.</div>
+      <div className="hint-text">
+        💡 0 = בלי חובה יומית. המפגשים מתאימים את עצמם למכסה אוטומטית.
+        בלי תאריך סיום המכסה פעילה תמיד.
+      </div>
     </div>
   );
 }
@@ -566,10 +589,43 @@ export default function ParentsScreen({ onBack }) {
 
           {!IS_WEB && (
             <div className="section">
+              <h2>🏪 חנות האפליקציות — KidsLearn Coli</h2>
+              <p style={{ color: '#607d8b', lineHeight: 1.7, margin: '0 0 12px' }}>
+                אפליקציות לימוד ומשחקים לילדים — כל אחת נבדקה ידנית לפני שהיא נכנסה לחנות:
+                בלי פרסומות, בלי רכישות מפתיעות ובלי צ׳אט עם זרים.
+              </p>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => window.open('/coli', '_blank')}
+                  style={{
+                    background: 'linear-gradient(135deg,#5e35b1,#3949ab)', color: '#fff',
+                    border: 'none', borderRadius: 12, padding: '11px 22px',
+                    fontSize: '1rem', fontWeight: 800, cursor: 'pointer',
+                  }}
+                >
+                  🏪 פתחו את החנות
+                </button>
+                <button
+                  onClick={() => window.open('/coli/publish', '_blank')}
+                  style={{
+                    background: '#eceff1', color: '#37474f',
+                    border: 'none', borderRadius: 12, padding: '11px 22px',
+                    fontSize: '1rem', fontWeight: 800, cursor: 'pointer',
+                  }}
+                >
+                  ⬆️ פרסום אפליקציה (בחינם)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!IS_WEB && (
+            <div className="section">
               <h2>☁️ KidsLearn Cloud — למפתחים</h2>
               <p style={{ color: '#607d8b', lineHeight: 1.7, margin: '0 0 12px' }}>
                 בונים אפליקציה משלכם? קבלו <b>Client ID</b> ו-<b>Client Secret</b> לכפתור
                 "התחברות עם KidsLearn", ו-<b>API Key</b> לגישה למנוע התרגילים — הכול בקונסולת המפתחים.
+                מאותו מקום גם מעלים את האפליקציה לחנות <b>Coli</b>.
               </p>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <button
@@ -595,6 +651,24 @@ export default function ParentsScreen({ onBack }) {
               </div>
             </div>
           )}
+
+          <div className="section">
+            <h2>✈️ Lexi — מודל השפה של KidsLearn</h2>
+            <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+              <LexiLogo width={150} />
+              <p style={{ color: '#607d8b', lineHeight: 1.7, margin: 0, flex: '1 1 260px' }}>
+                את בעיות המילה בחשבון מנסח <b>Lexi</b> — מודל שפה קטן שאומן מאפס במיוחד
+                לאפליקציה, ורץ כאן במכשיר בלי אינטרנט. הוא מספק{' '}
+                <b>{LEXI_INFO.total.toLocaleString('he-IL')}</b> ניסוחים שונים במקום שש
+                תבניות קבועות, כדי שהתרגילים לא יחזרו על עצמם.
+                <br />
+                <span style={{ fontSize: '0.92rem' }}>
+                  המספרים והתשובות <b>לא</b> מגיעים מהמודל — הם מחושבים בקוד רגיל, כך
+                  שתרגיל לא יכול לצאת עם תשובה שגויה.
+                </span>
+              </p>
+            </div>
+          </div>
 
           <div className="section">
             <h2>📚 היסטוריית מפגשים ({history.length})</h2>

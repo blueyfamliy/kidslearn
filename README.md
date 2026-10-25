@@ -120,10 +120,66 @@ npm run dev
 ├── client/              # React + Vite
 ├── server/              # Node + Express + nodemailer
 │   ├── exercises/       # מחוללי תרגילים (חשבון / עברית)
+│   ├── cloud*.js        # KidsLearn Cloud — קונסולת מפתחים + OAuth2 + API
+│   ├── coli*.js         # KidsLearn Coli — חנות האפליקציות
 │   └── data/            # נתונים מקומיים (gitignored)
 ├── electron/            # עטיפת Electron ל-EXE
 ├── launch.vbs           # מפעיל מהיר ב-Edge app mode
 └── package.json
+```
+
+## גרפיקות BITVIN 🎨
+
+הציורים המצוירים של האפליקציה (ליה ודין, חגיגות, מדבקות פרס) נוצרים במודל
+**BITVIN 3** שבתוך CHATGPDEAN, ונשמרים אוטומטית לכאן:
+
+```
+client/public/bitvin/
+├── manifest.json     # רשימת כל הציורים (נתיב, קטגוריה, תיאור, תאריך)
+├── characters/       # דמויות
+├── correct/          # חגיגה לתשובה נכונה
+├── wrong/            # עידוד אחרי טעות
+├── rewards/          # מדבקות פרס
+├── topics/           # איורי נושא
+└── backgrounds/      # רקעים
+```
+
+שימוש בקוד — דרך `client/src/lib/bitvinArt.js`:
+
+```js
+import { randomArtUrl, ART } from '../lib/bitvinArt';
+
+const url = await randomArtUrl(ART.CORRECT);   // null אם עוד לא נוצר ציור כזה
+if (url) setCelebrationImage(url);
+```
+
+אם התיקייה ריקה הפונקציות מחזירות `null` והאפליקציה עובדת בדיוק כמו קודם.
+
+## 🏪 KidsLearn Coli — חנות האפליקציות
+
+`/coli` היא חנות האפליקציות של KidsLearn: אפליקציות לימוד ומשחקים לילדים,
+כל אחת נבדקת ידנית לפני שהיא מגיעה למשפחות. **הפרסום חינמי** — אין דמי מפתח
+ואין עמלות.
+
+העלאה של אפליקציה מתבצעת מתוך **KidsLearn Cloud** (`/cloud`), אותה קונסולה
+שמנפיקה Client ID ו-API Key:
+
+1. `/cloud` → כניסה עם חשבון KidsLearn רגיל
+2. "אפליקציה חדשה" → מקבלים Client ID / Secret / API Key
+3. בעמוד האפליקציה: **"פרסום בחנות Coli"** → שם, אייקון, תמונות מסך,
+   קטגוריה, גיל וקישורי הורדה (אתר / APK / Windows / Mac / iOS)
+4. הצהרת בטיחות לילדים (בלי פרסומות, בלי רכישות, בלי צ׳אט, בלי איסוף מידע)
+5. "שליחה לאישור" → הבודק מאשר ב-`/cloud/coli/review` והאפליקציה עולה לחנות
+
+מי מאשר: `KIDSLEARN_ADMIN_EMAIL` אם הוגדר, אחרת החשבון הראשון שנפתח (ההורה).
+עריכה של אפליקציה מפורסמת מחזירה אותה לבדיקה.
+
+הקטלוג פתוח גם כ-JSON, בלי מפתח:
+
+```
+GET /api/coli/apps            # רשימה (q, category, age, free, sort)
+GET /api/coli/apps/:slug      # אפליקציה אחת
+GET /api/coli/categories      # קטגוריות + מונים
 ```
 
 ## נתונים פרטיים
@@ -132,5 +188,6 @@ npm run dev
 - `server/data/config.json` — סיסמת SMTP וכתובות מייל
 - `server/data/history.json` — היסטוריית תרגילים של הילדים
 - `server/data/review.json` — תור חזרה לשגיאות
+- `server/data/coli.json` + `coli-media/` — דפי החנות והאייקונים שהועלו
 
 הם נשארים רק במחשב המקומי שלך.

@@ -120,6 +120,7 @@ export default function ExerciseSession({ child, childName, subject, practice, p
   const [wrongCount, setWrongCount] = useState(0);
   const [showHint, setShowHint] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [confirmExit, setConfirmExit] = useState(false); // "really leave?" overlay
 
   const date = new Date().toISOString().slice(0, 10);
 
@@ -203,6 +204,18 @@ export default function ExerciseSession({ child, childName, subject, practice, p
     } else {
       setCurrent(c => c + 1);
     }
+  }
+
+  // Step back to the previous question: drop its recorded result so the child
+  // simply answers it again (and the progress bar stays honest).
+  function goPrev() {
+    if (current === 0) return;
+    setResults(r => r.slice(0, -1));
+    setCurrent(c => c - 1);
+    setAttempts(0);
+    setWrongCount(0);
+    setShowHint(false);
+    setFeedback(null);
   }
 
   function handleAnswer(answer) {
@@ -336,6 +349,14 @@ export default function ExerciseSession({ child, childName, subject, practice, p
   return (
     <div className="session">
       <div className="session-header">
+        <div className="session-nav">
+          <button className="nav-btn exit" onClick={() => setConfirmExit(true)}>
+            ✖ יציאה
+          </button>
+          <button className="nav-btn prev" onClick={goPrev} disabled={current === 0}>
+            ↩ שאלה קודמת
+          </button>
+        </div>
         <div className="session-progress">
           <span>
             {practice && <span className="review-badge">🔁 תרגול טעויות</span>}
@@ -364,6 +385,23 @@ export default function ExerciseSession({ child, childName, subject, practice, p
         attempts={attempts}
         maxAttempts={MAX_ATTEMPTS}
       />
+
+      {confirmExit && (
+        <div className="book-choice-overlay" onClick={() => setConfirmExit(false)}>
+          <div className="book-choice" onClick={e => e.stopPropagation()}>
+            <div className="book-choice-icon">🤔</div>
+            <h3 className="book-choice-title">לצאת מהתרגול?</h3>
+            <p className="exit-note">התרגילים שפתרת עכשיו לא יישמרו.</p>
+            <button className="book-choice-btn drill" onClick={onBack}>
+              <span>✖ כן, יוצאים</span>
+              <small>חוזרים למסך הראשי</small>
+            </button>
+            <button className="book-choice-cancel" onClick={() => setConfirmExit(false)}>
+              ממשיכים לתרגל 💪
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

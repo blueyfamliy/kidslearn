@@ -95,6 +95,25 @@ const TYPE_LABELS = {
   en_rhyme: '🎶 חרוזים באנגלית',
   en_sound_start: '🔔 צליל פותח',
   en_sentence_pic: '💬 משפט ותמונה',
+  en_a_an: '🇬🇧 a או an',
+  en_preposition: '📍 מילות מקום',
+  en_pronoun: '🙋 כינויי גוף',
+  en_be: '🔗 am / is / are',
+  en_verb_ing: '🏃 מה קורה עכשיו',
+  en_past_tense: '⏪ זמן עבר',
+  en_comparative: '📈 השוואה באנגלית',
+  en_question_word: '❓ מילות שאלה',
+  en_reply: '🗣️ שיחה באנגלית',
+  en_day: '📅 ימי השבוע באנגלית',
+  en_month: '🗓️ חודשים באנגלית',
+  en_time: '🕒 שעה באנגלית',
+  en_riddle: '🕵️ חידה באנגלית',
+  en_category_name: '🗂️ לאיזו קבוצה שייכים',
+  en_word_order: '🧩 סדר מילים במשפט',
+  en_listen_spell: '🎧 הקשיבו וכתבו',
+  en_reading: '📚 קטע קריאה',
+  en_sight_word: '🔑 מילות קישור',
+  en_number_big: '🔢 מספרים גדולים',
 };
 
 // English exercises where the audio (the English word) IS the answer – don't
@@ -106,6 +125,12 @@ const EN_AUDIO_REVEALS_ANSWER = ['en_pic_to_word', 'en_translate_to_en'];
 const EN_QUESTION_SPEECH = {
   en_missing_letter: 'איזו אות חסרה במילה?',
   en_letter_find: 'מצאו את האות ששומעים',
+  // Grammar questions are written in English with a blank — reading that with
+  // the Hebrew voice mangles it, so the child hears the instruction instead.
+  en_pronoun: 'איזה כינוי גוף מתאים למשפט?',
+  en_be: 'איזו מילה מתאימה למשפט?',
+  en_question_word: 'איזו מילת שאלה מתאימה?',
+  en_sight_word: 'איזו מילה משלימה את המשפט?',
 };
 
 // Turn a symbolic math question into speakable Hebrew:
@@ -210,6 +235,12 @@ export default function ExerciseCard({ exercise: ex, child, subject, onAnswer, o
     setInput(prev => prev.slice(0, -1));
   }
 
+  // Reading passages and full-sentence options need room to breathe: the
+  // question drops out of the big monospace style, and the options stack in
+  // one column instead of being squeezed two-across.
+  const longQuestion = String(ex.question || '').length > 80;
+  const longOptions = !!ex.options && ex.options.some(o => String(o).length > 16);
+
   const isMultiChoice = ex.options && ex.type !== 'find_letter' && ex.type !== 'count_letter' && ex.type !== 'en_letter_find';
   const isFindLetter = ex.type === 'find_letter' || ex.type === 'odd_one_out' || ex.type === 'en_letter_find';
   const isCountLetter = ex.type === 'count_letter';
@@ -238,7 +269,7 @@ export default function ExerciseCard({ exercise: ex, child, subject, onAnswer, o
       {ex.displayWord && !ex.displayLetter && <div className="big-word">{ex.displayWord}</div>}
 
       <div className="ex-question-row">
-        <div className="ex-question" dir={ex.dir || 'rtl'}>{ex.question}</div>
+        <div className={`ex-question ${longQuestion ? 'long-text' : ''}`} dir={ex.dir || 'rtl'}>{ex.question}</div>
         <button
           type="button"
           className="tts-btn"
@@ -252,7 +283,7 @@ export default function ExerciseCard({ exercise: ex, child, subject, onAnswer, o
 
       {/* Multiple choice */}
       {isMultiChoice && (
-        <div className="options-grid">
+        <div className={`options-grid ${longOptions ? 'stacked' : ''}`}>
           {ex.options.map(opt => {
             const optImg = ex.optionImages && ex.optionImages[opt];
             // "Which clock shows X?" — each option is DRAWN as a clock. The

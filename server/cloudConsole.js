@@ -2,6 +2,7 @@
 // screen. Plain server-rendered HTML (no build step, no dependencies) so the
 // console works in the packaged desktop app exactly like it does in dev.
 import { SCOPES, ALL_SCOPES, CLOUD_LIMITS, OOB_URI } from './cloud.js';
+import { STATUS, missingForSubmit } from './coli.js';
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -63,15 +64,17 @@ th{color:#546e7a;font-size:.85rem;text-transform:uppercase;letter-spacing:.5px}
 .scopebox small{display:block;color:#90a4ae;font-weight:500}
 `;
 
-function layout(title, body, { user = null, active = '' } = {}) {
+export function consoleLayout(title, body, { user = null, active = '', admin = false, pending = 0 } = {}) {
   const nav = user
     ? `<nav>
          <a href="/cloud/apps" ${active === 'apps' ? 'style="background:rgba(255,255,255,.3)"' : ''}>האפליקציות שלי</a>
+         <a href="/coli">🏪 חנות Coli</a>
+         ${admin ? `<a href="/cloud/coli/review" ${active === 'review' ? 'style="background:rgba(255,255,255,.3)"' : ''}>בדיקת אפליקציות${pending ? ` (${pending})` : ''}</a>` : ''}
          <a href="/cloud/docs" ${active === 'docs' ? 'style="background:rgba(255,255,255,.3)"' : ''}>תיעוד</a>
          <span style="opacity:.85;font-size:.88rem" dir="ltr">${esc(user.email)}</span>
          <form method="post" action="/cloud/logout" style="margin:0"><button type="submit">יציאה</button></form>
        </nav>`
-    : `<nav><a href="/cloud/docs">תיעוד</a></nav>`;
+    : `<nav><a href="/coli">🏪 חנות Coli</a><a href="/cloud/docs">תיעוד</a></nav>`;
   return `<!doctype html><html dir="rtl" lang="he"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} — KidsLearn Cloud</title><style>${CSS}</style></head><body>
@@ -86,6 +89,10 @@ function copyText(el, btn){
 }
 </script></body></html>`;
 }
+
+// Shared with the Coli publisher pages (coliConsole.js) so the whole console —
+// OAuth settings and store listing alike — is one consistent screen.
+const layout = consoleLayout;
 
 // ── Sign in / sign up to the console ───────────────────────────────────────
 export function loginPage({ error = '', mode = 'login', email = '' } = {}) {
@@ -121,12 +128,18 @@ export function loginPage({ error = '', mode = 'login', email = '' } = {}) {
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
-export function dashboardPage({ user, apps, flash = '' }) {
+export function dashboardPage({ user, apps, flash = '', admin = false, pending = 0, storeByApp = {} }) {
+  const storePill = (id) => {
+    const st = storeByApp[id];
+    if (!st) return `<span class="pill gray">🏪 לא בחנות</span>`;
+    const s = STATUS[st] || STATUS.draft;
+    return `<span class="pill ${s.pill === 'green' ? 'green' : 'gray'}">🏪 ${esc(s.label)}</span>`;
+  };
   const cards = apps.length ? apps.map(a => `
     <a class="appcard" href="/cloud/apps/${esc(a.id)}">
       <b>${esc(a.name)}</b>
       <div class="mono" style="color:#90a4ae;font-size:.8rem;margin:6px 0">${esc(a.clientId)}</div>
-      <div>${(a.scopes || []).map(s => `<span class="pill">${esc(SCOPES[s]?.icon || '')} ${esc(s)}</span>`).join('')}</div>
+      <div>${storePill(a.id)}${(a.scopes || []).map(s => `<span class="pill">${esc(SCOPES[s]?.icon || '')} ${esc(s)}</span>`).join('')}</div>
       <div style="color:#78909c;font-size:.85rem;margin-top:8px">
         ${a.usage?.logins || 0} התחברויות · ${a.usage?.total || 0} קריאות API
       </div>
@@ -137,10 +150,10 @@ export function dashboardPage({ user, apps, flash = '' }) {
   return layout('האפליקציות שלי', `
   ${flash ? `<div class="alert ok">${esc(flash)}</div>` : ''}
   <div class="row" style="margin-bottom:16px">
-    <div style="flex:1"><h1>האפליקציות שלי</h1><p class="sub" style="margin:0">כל אפליקציה מקבלת Client ID, Client Secret ו-API Key משלה.</p></div>
+    <div style="flex:1"><h1>האפליקציות שלי</h1><p class="sub" style="margin:0">כל אפליקציה מקבלת Client ID, Client Secret ו-API Key משלה — ויכולה להתפרסם בחינם ב<a href="/coli">חנות Coli</a>.</p></div>
     <a class="btn" href="/cloud/apps/new">+ אפליקציה חדשה</a>
   </div>
-  <div class="grid">${cards}</div>`, { user, active: 'apps' });
+  <div class="grid">${cards}</div>`, { user, active: 'apps', admin, pending });
 }
 
 // ── Create app ─────────────────────────────────────────────────────────────
@@ -188,7 +201,7 @@ export function newAppPage({ user, error = '', values = {} }) {
 }
 
 // ── App details ────────────────────────────────────────────────────────────
-export function appPage({ user, app, stats, reveal = {}, baseUrl, flash = '' }) {
+export function appPage({ user, app, stats, reveal = {}, baseUrl, flash = '', admin = false, pending = 0, listing = null }) {
   const secretBlock = reveal.clientSecret
     ? `<div class="alert warn">⚠️ זה ה-Client Secret — הוא מוצג <b>פעם אחת בלבד</b>. העתיקו ושמרו אותו במקום בטוח.</div>
        <div class="secret"><span id="cs" data-value="${esc(reveal.clientSecret)}">${esc(reveal.clientSecret)}</span>
@@ -264,6 +277,8 @@ curl <span class="s">"${esc(baseUrl)}/api/v1/exercises?subject=math&amp;level=20
   -H <span class="s">"X-API-Key: ${esc(app.apiKeyPrefix)}..."</span></pre>
   </div>
 
+  ${storeCard(app, listing)}
+
   <div class="card">
     <h2>⚙️ הגדרות</h2>
     <form method="post" action="/cloud/apps/${esc(app.id)}/update">
@@ -300,7 +315,38 @@ curl <span class="s">"${esc(baseUrl)}/api/v1/exercises?subject=math&amp;level=20
           onsubmit="return confirm('למחוק לצמיתות את ${esc(app.name)}? כל המשתמשים שהתחברו דרכה יתנתקו.')">
       <button class="btn danger" type="submit">מחיקת האפליקציה</button>
     </form>
-  </div>`, { user, active: 'apps' });
+  </div>`, { user, active: 'apps', admin, pending });
+}
+
+/** The bridge from Cloud to the store: status + a link into the listing form. */
+function storeCard(app, listing) {
+  if (!listing) {
+    return `<div class="card" style="background:linear-gradient(135deg,#ede7f6,#e8eaf6)">
+      <h2>🏪 פרסום בחנות Coli — בחינם</h2>
+      <p class="sub">האפליקציה הזו עוד לא בחנות. מלאו דף חנות (שם, אייקון, תמונות מסך וקישורי הורדה),
+        שלחו לאישור — ומשפחות ימצאו אתכם ב-KidsLearn Coli. אין דמי מפתח ואין עמלות.</p>
+      <a class="btn" href="/cloud/apps/${esc(app.id)}/store">פרסום האפליקציה בחנות ←</a>
+    </div>`;
+  }
+  const s = STATUS[listing.status] || STATUS.draft;
+  const missing = missingForSubmit(listing);
+  return `<div class="card">
+    <div class="row">
+      <div style="flex:1"><h2 style="margin:0">🏪 חנות Coli</h2></div>
+      <span class="pill ${s.pill === 'green' ? 'green' : 'gray'}">${esc(s.label)}</span>
+    </div>
+    ${listing.status === 'approved'
+      ? `<p class="sub" style="margin:10px 0">האפליקציה מפורסמת: <a href="/coli/app/${encodeURIComponent(listing.slug)}">/coli/app/${esc(listing.slug)}</a>
+         — ${listing.stats?.opens || 0} פתיחות, ${listing.stats?.views || 0} צפיות.</p>`
+      : listing.status === 'pending'
+        ? `<p class="sub" style="margin:10px 0">נשלחה לאישור ומחכה לבדיקה ידנית. אין מה לעשות — נעדכן בדף הזה.</p>`
+        : listing.status === 'rejected' || listing.status === 'suspended'
+          ? `<div class="alert err" style="margin:10px 0">${esc(listing.reviewNote || 'האפליקציה לא אושרה לפרסום.')}</div>`
+          : `<p class="sub" style="margin:10px 0">${missing.length
+              ? 'טיוטה — חסר עדיין: ' + esc(missing.join(', ')) + '.'
+              : 'הטיוטה מוכנה. אפשר לשלוח לאישור.'}</p>`}
+    <a class="btn ghost sm" href="/cloud/apps/${esc(app.id)}/store">עריכת דף החנות</a>
+  </div>`;
 }
 
 // ── Developer documentation ────────────────────────────────────────────────
@@ -320,11 +366,25 @@ export function docsPage({ user = null, baseUrl, clientId = 'YOUR_CLIENT_ID' }) 
     </div>
   </div>
 
+  <div class="card" style="background:linear-gradient(135deg,#ede7f6,#e8eaf6)">
+    <h2>🏪 מפרסמים את האפליקציה בחנות Coli</h2>
+    <p style="color:#37474f;line-height:1.8;margin:0 0 12px">
+      סיימתם לבנות? כל אפליקציה שנרשמה כאן יכולה להתפרסם ב-<b>KidsLearn Coli</b> — חנות האפליקציות
+      של KidsLearn. הפרסום <b>חינם</b>: אין דמי מפתח, אין עמלה על הורדות.
+      נכנסים לעמוד האפליקציה → "פרסום בחנות Coli" → ממלאים, ושולחים לאישור.
+    </p>
+    <div class="row">
+      <a class="btn" href="/coli/publish">איך מפרסמים ←</a>
+      <a class="btn ghost" href="/coli">לחנות</a>
+    </div>
+  </div>
+
   <div class="card">
     <h2>נקודות הקצה</h2>
     <table>
       <tr><th>מה</th><th>כתובת</th></tr>
       <tr><td>Discovery</td><td class="mono">GET ${b}/.well-known/kidslearn-configuration</td></tr>
+      <tr><td>קטלוג החנות</td><td class="mono">GET ${b}/api/coli/apps</td></tr>
       <tr><td>Authorize</td><td class="mono">GET ${b}/oauth/authorize</td></tr>
       <tr><td>Token</td><td class="mono">POST ${b}/oauth/token</td></tr>
       <tr><td>Userinfo</td><td class="mono">GET ${b}/oauth/userinfo</td></tr>

@@ -68,7 +68,7 @@ export function sanitizeGrade(grade) {
 // English (Foundation Level – תכנית האנגלית של משרד החינוך) is a global
 // 4-stage ladder, independent of the prep track. The parent picks a starting
 // stage per child (englishLevel); the adaptive mechanism climbs from there.
-export const ENGLISH_STAGES = 6;
+export const ENGLISH_STAGES = 8;
 export const ENGLISH_STAGE_NAMES = [
   'אותיות ראשונות',
   'מילים ראשונות',
@@ -76,6 +76,8 @@ export const ENGLISH_STAGE_NAMES = [
   'מרחיבים אוצר מילים',
   'משפטים וכתיבה',
   'שליטה באנגלית',
+  'דקדוק ראשון',
+  'קריאה והבנה',
 ];
 
 export function sanitizeEnglishLevel(level) {
@@ -167,12 +169,21 @@ export function applySessionToProgress(record, date, rate) {
   return { record: r, advanced: false };
 }
 
-// ── Daily summer plan (תכנית יומית לחופש הגדול) ─────────────────────────────
-// Each child can have a daily quota of exercises per subject (e.g. ליה: 15
-// math + 15 Hebrew + 15 English; דין: 20 math + 20 English). The plan runs
-// until `planUntil` (default: the last day of the Israeli summer vacation).
+// ── Daily exercise quota (מכסת תרגילים יומית) ───────────────────────────────
+// Each child can have a daily quota of exercises per subject (e.g. ליה: 20
+// math + 20 Hebrew + 20 English; דין: 50 math + 50 English), and sessions are
+// sized to it.
+//
+// An end date is OPTIONAL. It used to default to the last day of the Israeli
+// summer holiday, which was right for the feature's first season and wrong
+// afterwards: on 2026-09-01 every quota silently stopped applying and sessions
+// quietly fell back to the generators' own sizes (12/15/20) with nothing in the
+// UI to say why. A parent who had asked for 50 got 15 and no explanation.
+//
+// So: no quota expires unless a parent explicitly picks a date, and
+// RETIRED_SUMMER_UNTIL exists only so migration can recognise the old default.
 
-export const PLAN_DEFAULT_UNTIL = '2026-08-31';
+export const RETIRED_SUMMER_UNTIL = '2026-08-31';
 export const PLAN_MAX_PER_SUBJECT = 50;
 export const PLAN_SESSION_MAX = PLAN_MAX_PER_SUBJECT;   // one session can cover the whole daily quota
 export const PLAN_SESSION_MIN = 3;
@@ -190,13 +201,48 @@ export function sanitizeDailyPlan(plan) {
   return Object.keys(out).length ? out : null;
 }
 
+/** A real calendar date keeps its end date; anything else means "no end date". */
 export function sanitizePlanUntil(until) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(until || '')) ? until : PLAN_DEFAULT_UNTIL;
+  const s = String(until || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  // Shape alone is not enough: "2026-13-99" passes the regex and then compares
+  // greater than every real date, which would keep a quota on forever.
+  const d = new Date(`${s}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== s ? null : s;
 }
 
+/**
+ * Drop the retired summer end date.
+ *
+ * The daily quota used to default to "until 2026-08-31", the end of the Israeli
+ * summer holiday. Nobody chose that value — it was the default every child was
+ * created with — and once it passed, every quota silently stopped applying:
+ * sessions fell back to the generators' own sizes (12/15/20) while the parents'
+ * screen went on showing the configured number. A parent asking for 50 got 15.
+ *
+ * A profile still carrying exactly that value has its end date cleared, which
+ * puts the quota the parent actually configured back in charge. A date a parent
+ * picked themselves is left alone, expired or not — that was a real decision,
+ * and the parents' screen now says when one has switched a quota off.
+ *
+ * Lives here rather than in storage.js so the offline builds get it too:
+ * client/src/lib/localApi.js keeps its own copy of the profile store, and the
+ * APK and single-file desktop build are what the kids actually run.
+ */
+export function migratePlanUntil(until) {
+  return until === RETIRED_SUMMER_UNTIL ? null : sanitizePlanUntil(until);
+}
+
+/** Is the quota in effect today? No end date = always, as long as one is set. */
 export function planIsActive(profile, date) {
   if (!profile?.dailyPlan) return false;
-  return date <= (profile.planUntil || PLAN_DEFAULT_UNTIL);
+  if (!profile.planUntil) return true;
+  return date <= profile.planUntil;
+}
+
+/** A quota that exists but has been switched off by its own end date. */
+export function planHasExpired(profile, date) {
+  return !!profile?.dailyPlan && !!profile.planUntil && date > profile.planUntil;
 }
 
 /**

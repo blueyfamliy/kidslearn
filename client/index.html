@@ -1,10 +1,45 @@
 <!doctype html>
-<html lang="en">
+<html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      GitHub Pages cannot send response headers, so the policy travels in the
+      page. It keeps an injected script from phoning anywhere except the hosts
+      sign-in genuinely needs (Google Identity + Firebase Auth). Note that
+      frame-ancestors is ignored in a <meta> policy by design — the framebuster
+      below the policy is what stops a lookalike site embedding the app.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               script-src 'self' 'unsafe-inline' https://apis.google.com https://www.gstatic.com;
+               style-src 'self' 'unsafe-inline';
+               img-src 'self' data: blob: https:;
+               media-src 'self' data: blob:;
+               font-src 'self' data:;
+               connect-src 'self' https://*.googleapis.com https://*.google.com;
+               frame-src https://*.firebaseapp.com https://accounts.google.com https://*.google.com;
+               object-src 'none';
+               base-uri 'self';
+               form-action 'self'"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <script>
+      // Clickjacking guard: nobody frames the kids' app inside their own page.
+      if (window.top !== window.self) window.top.location = window.self.location;
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>client</title>
+    <title>KidsLearn — תרגול יומי לילדים</title>
+    <meta name="description" content="האפליקציה של KidsLearn — תרגילי חשבון, גאומטריה ועברית עם הקראה, ישירות בדפדפן. ההתקדמות נשמרת במכשיר." />
+    <meta name="theme-color" content="#667eea" />
+    <link rel="canonical" href="https://kidslearn.fun/app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="KidsLearn" />
+    <meta property="og:locale" content="he_IL" />
+    <meta property="og:title" content="KidsLearn — תרגול יומי לילדים" />
+    <meta property="og:description" content="תרגילי חשבון, גאומטריה ועברית עם הקראה — ישירות בדפדפן." />
+    <meta property="og:url" content="https://kidslearn.fun/app/" />
   </head>
   <body>
     <div id="root"></div>

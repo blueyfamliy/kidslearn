@@ -68,3 +68,9 @@ cooking-game/
 ketchup-game/
 SiteBuilderAI/
 /icon.png
+
+# ─── Unrelated / local-only (added 2026-10-25) ─────────────────────────────
+cooking-game-itch/
+client/dist-webcheck/
+SiteBuilderAI.spec
+.firebaserc

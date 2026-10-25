@@ -4,14 +4,16 @@ import ExerciseSession from './components/ExerciseSession';
 import ParentsScreen from './components/ParentsScreen';
 import MistakesScreen from './components/MistakesScreen';
 import AuthScreen from './components/AuthScreen';
-import { IS_WEB, meAccount, logoutAccount } from './api';
+import { IS_WEB, meAccount, logoutAccount, deviceLogin } from './api';
+import { APP_TITLE } from './version';
 import './App.css';
 import './mobile.css';   // phone overrides — must load last
 
-// Account session — WEB ONLY. The installed desktop app never asks to
-// register or log in: the family's children and history live locally on the
-// machine, so it opens straight into the home screen. The web version, in
-// contrast, REQUIRES an account (no guest entry).
+// Account session — BOTH platforms now REQUIRE an account (no guest entry).
+// The web version always shows the login screen. The installed desktop app is
+// shipped to every customer, so it asks for a login too — EXCEPT on a trusted
+// family machine, where a silent device-trust sign-in (see deviceLogin) skips
+// the screen entirely. Logging out forgets the machine, so it asks again.
 const AUTH_KEY = 'kidslearn:auth';
 function loadAuth() { try { return JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch { return null; } }
 function saveAuth(a) { try { localStorage.setItem(AUTH_KEY, JSON.stringify(a)); } catch {} }
@@ -20,23 +22,44 @@ function clearAuth() { try { localStorage.removeItem(AUTH_KEY); } catch {} }
 export default function App() {
   const [view, setView] = useState({ name: 'home' }); // 'home' | 'session' | 'mistakes' | 'parents'
 
-  // Web: restore the saved session, then validate it quietly.
-  const [auth, setAuth] = useState(() => (IS_WEB ? loadAuth() : null));
-  const [authReady, setAuthReady] = useState(!IS_WEB);
+  // Restore the saved session (both platforms), then validate it quietly.
+  const [auth, setAuth] = useState(() => loadAuth());
+  const [authReady, setAuthReady] = useState(false);
+
+  // Stamp the version on the window/tab title ("KidsLearn v1.3.5") so the
+  // running build is identifiable without digging into any menu.
+  useEffect(() => { document.title = APP_TITLE; }, []);
 
   useEffect(() => {
-    if (!IS_WEB) return;
     let alive = true;
-    const stored = loadAuth();
-    if (!stored?.token) { setAuthReady(true); return; }
-    meAccount(stored.token)
-      .then(r => {
-        if (!alive) return;
-        if (r?.ok) setAuth({ token: stored.token, email: r.user.email, name: r.user.name });
-        else { clearAuth(); setAuth(null); }   // stale token → sign in again
-      })
-      .catch(() => {})                          // transient error: keep the stored session
-      .finally(() => { if (alive) setAuthReady(true); });
+    (async () => {
+      const finish = () => { if (alive) setAuthReady(true); };
+      const stored = loadAuth();
+      // 1) A saved session on this machine — validate it quietly.
+      if (stored?.token) {
+        try {
+          const r = await meAccount(stored.token);
+          if (!alive) return;
+          if (r?.ok) { setAuth({ token: stored.token, email: r.user.email, name: r.user.name }); return finish(); }
+          clearAuth(); setAuth(null);            // stale token → try device / show login
+        } catch {
+          return finish();                       // transient error: keep the stored session
+        }
+      }
+      // 2) Desktop only: a trusted family machine signs in silently — no screen.
+      if (!IS_WEB) {
+        try {
+          const r = await deviceLogin();
+          if (r?.ok && alive) {
+            const a = { token: r.token, email: r.user?.email || '', name: r.user?.name || '' };
+            saveAuth(a); setAuth(a); return finish();
+          }
+        } catch {}                               // machine not trusted → login screen
+      }
+      // 3) No session and not a trusted machine → require a login.
+      if (alive) setAuth(null);
+      finish();
+    })();
     return () => { alive = false; };
   }, []);
 
@@ -47,11 +70,11 @@ export default function App() {
     setView({ name: 'home' });
   }
 
-  // Web gate: a registered account is required (no guest mode).
-  if (IS_WEB) {
-    if (!authReady) return <div className="auth"><div className="auth-footer">טוען…</div></div>;
-    if (!auth) return <AuthScreen onAuthed={(a) => { saveAuth(a); setAuth(a); }} />;
-  }
+  // Auth gate (both platforms): a registered account is required (no guest mode).
+  // On a trusted family desktop the silent device sign-in above already filled
+  // `auth`, so this screen never appears there.
+  if (!authReady) return <div className="auth"><div className="auth-footer">טוען…</div></div>;
+  if (!auth) return <AuthScreen onAuthed={(a) => { saveAuth(a); setAuth(a); }} />;
 
   if (view.name === 'session') {
     return (
@@ -84,7 +107,7 @@ export default function App() {
 
   return (
     <>
-      {IS_WEB && auth && (
+      {auth && (
         <button
           onClick={handleLogout}
           title={auth.email}

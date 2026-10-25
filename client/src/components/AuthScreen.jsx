@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   authStatus, registerAccount, loginAccount, googleLoginStart, googleLoginResult,
-  googleCredentialLogin, GOOGLE_WEB_CLIENT_ID, IS_WEB,
+  googleFirebaseLogin, IS_WEB,
 } from '../api';
 import './AuthScreen.css';
 
@@ -27,8 +27,6 @@ export default function AuthScreen({ onAuthed }) {
   const [googleWaiting, setGoogleWaiting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const pollRef = useRef(null);
-  const gisDivRef = useRef(null);          // web: container for the official Google button
-  const [gisReady, setGisReady] = useState(false);
 
   // Typing a password with the keyboard left in Hebrew produces Hebrew letters
   // that look identical behind the dots — warn instead of failing silently.
@@ -42,50 +40,25 @@ export default function AuthScreen({ onAuthed }) {
   // Stop polling if the screen unmounts.
   useEffect(() => () => stopGooglePoll(), []);
 
-  // Web: load Google Identity Services and render the official button —
-  // Google signs the user in right here on the page, no Supabase involved.
-  useEffect(() => {
-    if (!IS_WEB) return;
-    if (window.google?.accounts?.id) { setGisReady(true); return; }
-    const s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client';
-    s.async = true;
-    s.onload = () => setGisReady(true);
-    s.onerror = () => setError('טעינת ההתחברות עם Google נכשלה — בדקו את החיבור לאינטרנט');
-    document.head.appendChild(s);
-    return () => { try { s.remove(); } catch {} };
-  }, []);
-
-  useEffect(() => {
-    if (!IS_WEB || !gisReady || !gisDivRef.current || !window.google?.accounts?.id) return;
-    try {
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_WEB_CLIENT_ID,
-        callback: async (resp) => {
-          try {
-            const r = await googleCredentialLogin(resp?.credential);
-            onAuthed({ token: r.token, email: r.user.email, name: r.user.name });
-          } catch (err) {
-            setError(err.message);
-          }
-        },
-      });
-      window.google.accounts.id.renderButton(gisDivRef.current, {
-        theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', locale: 'he', width: 280,
-      });
-    } catch {
-      setError('ההתחברות עם Google לא נטענה — נסו לרענן את הדף');
-    }
-  }, [gisReady]);
-
   function stopGooglePoll() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     setGoogleWaiting(false);
   }
 
-  // Desktop: open Google sign-in in the system browser and poll for the
-  // result. Web: googleLoginStart() redirects THIS page to Google, and the
-  // returning redirect is completed in App.jsx — no polling needed.
+  // Web: Firebase opens the Google popup right here and verifies the identity.
+  async function webGoogleSignIn() {
+    setError(null);
+    setBusy(true);
+    try {
+      const r = await googleFirebaseLogin();
+      onAuthed({ token: r.token, email: r.user.email, name: r.user.name });
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  }
+
+  // Desktop: open Google sign-in in the system browser and poll for the result.
   async function googleSignIn() {
     setError(null);
     try {
@@ -94,7 +67,6 @@ export default function AuthScreen({ onAuthed }) {
       setError(err.message);
       return;
     }
-    if (IS_WEB) return;   // the page is navigating away to Google
     setGoogleWaiting(true);
     const startedAt = Date.now();
     pollRef.current = setInterval(async () => {
@@ -200,20 +172,19 @@ export default function AuthScreen({ onAuthed }) {
         </button>
 
         <div className="auth-divider"><span>או</span></div>
-        {IS_WEB ? (
-          // Web: the official Google button (Google Identity Services).
-          <div className="auth-gis">
-            <div ref={gisDivRef} />
-            {!gisReady && <div className="auth-gis-loading">טוען את ההתחברות עם Google…</div>}
-          </div>
-        ) : googleWaiting ? (
+        {googleWaiting ? (
           <div className="auth-google-wait">
             <div className="auth-google-spinner" />
             ממתין לאישור בדפדפן…
             <button type="button" className="auth-toggle" onClick={stopGooglePoll}>ביטול</button>
           </div>
         ) : (
-          <button type="button" className="auth-google" onClick={googleSignIn} disabled={busy}>
+          <button
+            type="button"
+            className="auth-google"
+            onClick={IS_WEB ? webGoogleSignIn : googleSignIn}
+            disabled={busy}
+          >
             <GoogleIcon /> התחבר עם Google
           </button>
         )}

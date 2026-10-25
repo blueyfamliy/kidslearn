@@ -3,7 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import {
   sanitizeGrade, sanitizeEnglishLevel, sanitizeHebrewLevel, sanitizeMathStage, foldSession,
-  sanitizeDailyPlan, sanitizePlanUntil, planIsActive,
+  sanitizeDailyPlan, sanitizePlanUntil, migratePlanUntil, planIsActive,
 } from './exercises/curriculum.js';
 import { pickNewSticker, computePracticeStreak, computeAchievements } from './exercises/rewards.js';
 import { resolveDataDir } from './dataDir.js';
@@ -58,7 +58,7 @@ function normalizeChild(c) {
     hebrewLevel: sanitizeHebrewLevel(c.hebrewLevel),
     mathStage: sanitizeMathStage(c.mathStage),
     dailyPlan: sanitizeDailyPlan(c.dailyPlan),
-    planUntil: sanitizePlanUntil(c.planUntil),
+    planUntil: migratePlanUntil(c.planUntil),
     allowMulDiv: !!c.allowMulDiv,   // multiplication & division off until parent enables
     hideEnglish: !!c.hideEnglish,             // parent toggle: pause English entirely (unused by UI)
     hideEnglishLetters: !!c.hideEnglishLetters, // parent toggle: English stays, ABC letter drills hidden
@@ -336,7 +336,11 @@ export function getPlanStatus(profile, date) {
       return { subject, target, done };
     });
   const rec = readRewardsAll()[profile.id];
-  const lockedComplete = !!(rec?.stickers || []).some(s => s.date === date);
+  // Only the DAILY sticker locks a day as complete. A magic-box bonus sticker
+  // is a gift, not evidence the child practised — counting it meant one bonus
+  // marked the whole day's quota finished, and every session that day silently
+  // dropped back to the generator's own size instead of the configured number.
+  const lockedComplete = !!(rec?.stickers || []).some(s => s.date === date && !s.bonus);
   return {
     date,
     until: profile.planUntil,
@@ -368,7 +372,9 @@ function writeRewardsAll(data) {
 export function maybeAwardSticker(profile, date, planStatus) {
   const all = readRewardsAll();
   const rec = all[profile.id] || { stickers: [] };
-  if (rec.stickers.some(s => s.date === date)) return null;    // one per day
+  // One DAILY sticker per day. A magic-box bonus that day must not use up the
+  // child's chance to earn their own.
+  if (rec.stickers.some(s => s.date === date && !s.bonus)) return null;
   if (planIsActive(profile, date) && !planStatus?.complete) return null;
 
   const emoji = pickNewSticker(rec.stickers.map(s => s.emoji));

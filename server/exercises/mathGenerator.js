@@ -1,3 +1,5 @@
+import { lexiWordProblem } from '../ml/pool.js';
+
 function randInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -50,6 +52,28 @@ const WORD_PROBLEMS_SUB = [
   (a, b) => `יוסי קנה ${a} מדבקות, נתן ${b} לחברים. כמה נשאר לו?`,
   (a, b) => `היו ${a} פרחים באגרטל, ולקחו ${b}. כמה פרחים נשארו?`,
 ];
+
+// ── Lexi ────────────────────────────────────────────────────────────────────
+// The twelve templates above phrase every word problem the kids have ever seen,
+// so a child who does these daily meets the same six sentences over and over.
+// Lexi (server/ml/) supplies ~1,000 validated phrasings instead, built from the
+// same vocabulary. It writes only the SENTENCE -- the numbers below and the
+// answers are still ordinary arithmetic, so a word problem cannot come out
+// wrong however the model behaves.
+//
+// Every path here falls back to the templates. Lexi is variety, not a
+// dependency: if the pool is missing, stale, or throws, the session continues
+// exactly as it did before.
+
+const LEXI_RNG = { int: (n) => Math.floor(Math.random() * n) };
+
+function lexiWord(op, max, maxB) {
+  try {
+    return lexiWordProblem({ lang: 'he', op, max, maxB, rng: LEXI_RNG });
+  } catch {
+    return null;   // a language model is never a reason for a session to die
+  }
+}
 
 // difficulty: 1=easy, 2=medium, 3=hard
 const GENERATORS = {
@@ -113,18 +137,8 @@ const GENERATORS = {
   },
 
   // Hard
-  word_add: () => {
-    const a = randInt(2, 10);
-    const b = randInt(1, 20 - a);
-    const tpl = pick(WORD_PROBLEMS_ADD);
-    return { type: 'word_add', difficulty: 3, dir: 'rtl', question: tpl(a, b), answer: a + b, hint: `${a} + ${b}` };
-  },
-  word_sub: () => {
-    const a = randInt(5, 20);
-    const b = randInt(1, a - 1);
-    const tpl = pick(WORD_PROBLEMS_SUB);
-    return { type: 'word_sub', difficulty: 3, dir: 'rtl', question: tpl(a, b), answer: a - b, hint: `${a} - ${b}` };
-  },
+  word_add: () => makeWordAddLeveled(20),
+  word_sub: () => makeWordSubLeveled(20),
 
   // ── Place value – tens & ones (תחום ה-100, סוף כיתה א') ──────────────────
   tens_in_number: () => {
@@ -393,12 +407,9 @@ const MIXED_GENERATORS = {
     const b = randInt(1, MIXED_SUB_MAX);
     return { type: 'subtraction_30', difficulty: 3, dir: 'ltr', question: `${a} - ${b} = ?`, answer: a - b, hint: `${a} - ${b}` };
   },
-  word_sub: () => {
-    const a = randInt(5, 20);
-    const b = randInt(1, Math.min(MIXED_SUB_MAX, a - 1));
-    const tpl = pick(WORD_PROBLEMS_SUB);
-    return { type: 'word_sub', difficulty: 3, dir: 'rtl', question: tpl(a, b), answer: a - b, hint: `${a} - ${b}` };
-  },
+  // The mixed track never subtracts more than MIXED_SUB_MAX (v1.3.3), and that
+  // holds whether the sentence came from Lexi or from a template.
+  word_sub: () => makeWordSubLeveled(20, MIXED_SUB_MAX),
 };
 
 // The original "mixed" curriculum (end-1st / start-2nd grade): arithmetic up
@@ -531,16 +542,27 @@ function makeSequenceLeveled(max) {
   });
 }
 
+// Every word problem in the app goes through these two, so wiring Lexi in here
+// covers all of them: the daily mix, the prep tracks, and every math level.
+
 function makeWordAddLeveled(max) {
+  return lexiWord('add', max) || templateWordAdd(max);
+}
+
+function makeWordSubLeveled(max, maxB) {
+  return lexiWord('sub', max, maxB) || templateWordSub(max, maxB);
+}
+
+function templateWordAdd(max) {
   const a = randInt(2, Math.max(2, max - 1));
   const b = randInt(1, Math.max(1, max - a));
   const tpl = pick(WORD_PROBLEMS_ADD);
   return { type: 'word_add', difficulty: 3, dir: 'rtl', question: tpl(a, b), answer: a + b, hint: `${a} + ${b}` };
 }
 
-function makeWordSubLeveled(max) {
+function templateWordSub(max, maxB = Infinity) {
   const a = randInt(Math.min(5, max), max);
-  const b = randInt(1, Math.max(1, a - 1));
+  const b = randInt(1, Math.max(1, Math.min(maxB, a - 1)));
   const tpl = pick(WORD_PROBLEMS_SUB);
   return { type: 'word_sub', difficulty: 3, dir: 'rtl', question: tpl(a, b), answer: a - b, hint: `${a} - ${b}` };
 }
@@ -561,17 +583,28 @@ function generateLeveledMath(level, reviewExercises = [], operation = 'mix') {
   const wordN = withWord ? 2 : 0;
   const arithTotal = 20 - SUPPORT - wordN; // addition / subtraction / complete
 
+  // Level 20 is the bridge out of the 0–10 base: a third of the drill
+  // questions stay within 10, so the foundation keeps being practiced
+  // alongside the new 11–20 range instead of being left behind.
+  const baseN = (n) => (L === 20 ? Math.round(n / 3) : 0);
+
   if (operation === 'add') {
-    push(() => makeAddition(L), arithTotal - 2);
+    const n = arithTotal - 2, b = baseN(n);
+    push(() => makeAddition(10), b);
+    push(() => makeAddition(L), n - b);
     push(() => makeComplete(L), 2);          // "complete to a round number" is addition
     if (withWord) push(() => makeWordAddLeveled(L), 2);
   } else if (operation === 'sub') {
-    push(() => makeSubtraction(L), arithTotal); // a subtraction-only session has no "complete"
+    const b = baseN(arithTotal);
+    push(() => makeSubtraction(10), b);
+    push(() => makeSubtraction(L), arithTotal - b); // a subtraction-only session has no "complete"
     if (withWord) push(() => makeWordSubLeveled(L), 2);
   } else {
-    const half = (arithTotal - 2) / 2;
-    push(() => makeAddition(L), half);
-    push(() => makeSubtraction(L), half);
+    const half = (arithTotal - 2) / 2, b = baseN(half);
+    push(() => makeAddition(10), b);
+    push(() => makeAddition(L), half - b);
+    push(() => makeSubtraction(10), b);
+    push(() => makeSubtraction(L), half - b);
     push(() => makeComplete(L), 2);
     if (withWord) { push(() => makeWordAddLeveled(L), 1); push(() => makeWordSubLeveled(L), 1); }
   }

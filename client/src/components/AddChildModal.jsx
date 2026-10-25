@@ -29,11 +29,15 @@ const ENGLISH_LEVEL_OPTIONS = [
   { value: 3, label: '3 — קוראים וכותבים' },
   { value: 4, label: '4 — מרחיבים אוצר מילים' },
   { value: 5, label: '5 — משפטים וכתיבה (מתקדמים)' },
-  { value: 6, label: '6 — שליטה באנגלית (הכי קשה)' },
+  { value: 6, label: '6 — שליטה באנגלית' },
+  { value: 7, label: '7 — דקדוק ראשון (זמנים והשוואה)' },
+  { value: 8, label: '8 — קריאה והבנה (הכי קשה)' },
 ];
 
 const SUBJECT_NAMES = { math: '➕ חשבון', hebrew: '🔤 עברית', english: '🇬🇧 אנגלית' };
-const PLAN_DEFAULT_UNTIL = '2026-08-31';   // סוף החופש הגדול
+// A quota has no end date unless a parent picks one. It used to default to
+// the end of the summer holiday, which meant every child created after that
+// date was born with a quota that had already stopped applying.
 
 // Render any File or data-URL into a centered square PNG of the given size.
 // PNG (not JPEG) so a transparent background from the cut-out is preserved.
@@ -79,7 +83,7 @@ export default function AddChildModal({ onClose, onSaved, editChild }) {
   const [mathStage, setMathStage] = useState(editChild?.mathStage ?? 1);
   // Daily summer plan: exercises-per-day per subject (0 = no requirement).
   const [dailyPlan, setDailyPlan] = useState(editChild?.dailyPlan || null);
-  const [planUntil, setPlanUntil] = useState(editChild?.planUntil || PLAN_DEFAULT_UNTIL);
+  const [planUntil, setPlanUntil] = useState(editChild?.planUntil || '');
   const [avatar, setAvatar] = useState(editChild?.avatar || AVATARS[0]);
   const [photo, setPhoto] = useState(editChild?.photo || '');   // data URL or path when set
   const [saving, setSaving] = useState(false);
@@ -168,6 +172,9 @@ export default function AddChildModal({ onClose, onSaved, editChild }) {
         <button className="modal-close" onClick={onClose}>✕</button>
         <h2>{isEdit ? '✏️ עריכת ילד/ה' : '➕ הוספת ילד/ה'}</h2>
 
+        {/* Everything between the title and the save button scrolls, so the
+            save button stays reachable no matter how tall the form gets. */}
+        <div className="modal-body">
         <div className="avatar-preview">
           {photo ? <img src={photo} alt="" className="preview-photo" /> : avatar}
         </div>
@@ -345,15 +352,16 @@ export default function AddChildModal({ onClose, onSaved, editChild }) {
           </div>
           {subjects.some(s => dailyPlan?.[s] > 0) && (
             <label className="plan-row">
-              <span className="plan-subject">עד תאריך</span>
+              <span className="plan-subject">עד תאריך (לא חובה)</span>
               <input
                 type="date"
                 className="plan-until"
                 value={planUntil}
-                onChange={e => setPlanUntil(e.target.value || PLAN_DEFAULT_UNTIL)}
+                onChange={e => setPlanUntil(e.target.value)}
               />
             </label>
           )}
+        </div>
         </div>
 
         {error && <div className="modal-error">{error}</div>}

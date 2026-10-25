@@ -1,5 +1,4 @@
 import express from 'express';
-import cors from 'cors';
 import nodemailer from 'nodemailer';
 import https from 'https';
 import path from 'path';
@@ -33,6 +32,7 @@ import {
   validState, googleSignInPage, GOOGLE_SIGNIN_PATH,
 } from './firebaseAuth.js';
 import { cloudRouter } from './cloudRoutes.js';
+import { coliRouter } from './coliRoutes.js';
 import { spawn } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -58,11 +58,58 @@ process.on('uncaughtException', err => logCrash('uncaughtException', err));
 process.on('unhandledRejection', err => logCrash('unhandledRejection', err));
 
 const app = express();
-app.use(cors());
+
+// ── Cross-origin policy ────────────────────────────────────────────────────
+// This server holds the kids' data, so it does NOT answer the whole web. With
+// a blanket cors() any site the family happened to open could read
+// /api/children or rewrite the email settings straight from the browser.
+// Two kinds of caller get through:
+//   • the app's own pages — the Electron window, the vite dev proxy, a browser
+//     tab on this machine (localhost, any port), and same-origin requests,
+//     which carry no Origin header at all;
+//   • the PUBLIC developer surface, where every request authenticates itself
+//     with an API key, an access token or a one-time SSO code — that is the
+//     whole point of "Sign in with KidsLearn" in someone else's app.
+// Anything else is refused before it reaches a route.
+const PUBLIC_PATHS = [
+  /^\/oauth\//,                          // "Login with KidsLearn" (OAuth2)
+  /^\/api\/v1\//,                        // public API, behind an API key
+  /^\/\.well-known\//,                   // discovery document
+  /^\/api\/sso\/(verify|exchange)$/,     // local SSO for the family's own apps
+  /^\/coli(\/|$)/,                       // KidsLearn Coli — the store is a shop window
+  /^\/api\/coli\//,                      // …and its catalog is meant to be read by anyone
+];
+const isPublicPath = (p) => PUBLIC_PATHS.some(re => re.test(p));
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin || '';
+  const open = isPublicPath(req.path);
+  if (!open && origin && !LOCAL_ORIGIN.test(origin)) {
+    return res.status(403).json({ error: 'cross-origin request blocked' });
+  }
+  if (origin) {
+    // No Allow-Credentials: cookies (the /cloud console session) never travel
+    // cross-origin, so the console keeps its SameSite=Lax protection.
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.set('Access-Control-Max-Age', '600');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 // Allow larger bodies so child photos (base64 data URLs) fit comfortably
 app.use(express.json({ limit: '8mb' }));
 
-// ── KidsLearn Cloud ────────────────────────────────────────────────────────
+// ── KidsLearn Coli + Cloud ─────────────────────────────────────────────────
+// Coli is the app store (/coli, /api/coli/*) plus the publisher form that
+// lives inside the Cloud console. It goes FIRST: the listing form uploads an
+// icon and screenshots as base64, and needs a larger body limit than the 1MB
+// the console's own parser allows.
+app.use(coliRouter);
 // The developer platform: /cloud (console), /oauth/* ("Login with KidsLearn")
 // and /api/v1/* (public API behind an API key). Mounted before the SPA
 // fallback so its pages win over index.html.
@@ -225,32 +272,6 @@ function copyCode() {
     () => { const r = document.createRange(); r.selectNode(document.getElementById('codeBox')); getSelection().removeAllRanges(); getSelection().addRange(r); }
   );
 }
-${withGoogle ? `
-// Google-verified connect: start KidsLearn's Google flow, poll for the result,
-// then lock the verified identity in (overrides the account picker).
-(async function googleVerify() {
-  const banner = document.getElementById('gBanner');
-  try {
-    await fetch('/api/auth/google/start');
-    for (let i = 0; i < 60; i++) {
-      await new Promise(r => setTimeout(r, 2000));
-      const res = await fetch('/api/auth/google/result');
-      const j = await res.json();
-      if (j.ok && j.user) {
-        window.__googleEmail = j.user.email;
-        banner.style.background = '#e6f4ea';
-        banner.style.borderColor = '#a8dab5';
-        banner.style.color = '#137333';
-        banner.textContent = '✓ אומתתם עם Google: ' + j.user.email;
-        document.querySelectorAll('input[name=acct]').forEach(x => { x.disabled = true; });
-        return;
-      }
-    }
-    banner.textContent = 'האימות עם Google לא הושלם — אפשר לבחור חשבון ידנית למטה.';
-  } catch (e) {
-    banner.textContent = 'שגיאה באימות Google — אפשר לבחור חשבון ידנית למטה.';
-  }
-})();` : ''}
 </script></body></html>`);
 });
 
@@ -1049,9 +1070,26 @@ app.get('/api/tts', (req, res) => {
   });
 });
 
+/**
+ * Why a daily report would not go out, or null when it would.
+ *
+ * `enabled` was previously checked only by the settings screen, never by the
+ * sender: a parent who switched reports OFF kept getting them for as long as
+ * credentials were stored. Reports carry the child's name and every question
+ * they got wrong, so that is a privacy bug, not a cosmetic one.
+ */
+function emailBlockedReason(cfg) {
+  if (!cfg.enabled) return { code: 'disabled', log: 'reports are switched off', he: 'הדוחות מכובים בהגדרות.' };
+  if (!cfg.smtpUser) return { code: 'no_user', log: 'no SMTP user configured', he: 'חסרה כתובת הגמייל השולחת (SMTP user).' };
+  if (!cfg.smtpPass) return { code: 'no_pass', log: 'no SMTP password configured', he: 'חסרה סיסמת האפליקציה (App Password).' };
+  if (!cfg.recipients && !cfg.smtpUser) return { code: 'no_to', log: 'no recipients', he: 'אין נמענים.' };
+  return null;
+}
+
 // Email config
 app.get('/api/config/email', (req, res) => {
   const cfg = readConfig().email;
+  const blocked = emailBlockedReason(cfg);
   res.json({
     enabled: cfg.enabled,
     smtpHost: cfg.smtpHost,
@@ -1060,6 +1098,11 @@ app.get('/api/config/email', (req, res) => {
     recipients: cfg.recipients,
     hasPassword: !!cfg.smtpPass,
     passLength: (cfg.smtpPass || '').length,
+    // So the settings screen can say WHY nothing is arriving instead of looking
+    // configured and silently doing nothing.
+    sending: !blocked,
+    blockedReason: blocked ? blocked.code : null,
+    blockedText: blocked ? blocked.he : null,
   });
 });
 
@@ -1071,11 +1114,30 @@ app.post('/api/config/email', (req, res) => {
     // Strip ALL whitespace (Google sometimes displays App Passwords with spaces)
     ? String(smtpPass).replace(/\s+/g, '')
     : config.email.smtpPass;
+
+  // The SENDING account is one address — the one the App Password belongs to.
+  // Pasting two addresses in here (easy to do: the recipients box is right
+  // below) sent Gmail the whole string as a username and came back as a bare
+  // "535-5.7.8 Username and Password not accepted", which reads like a wrong
+  // password and sends you off resetting credentials that were fine.
+  const user = String(smtpUser || '').trim();
+  const userParts = user.split(/[\s,;]+/).filter(Boolean);
+  if (userParts.length > 1) {
+    return res.status(400).json({
+      ok: false,
+      error: `כתובת השולח צריכה להיות כתובת אחת בלבד (התקבלו ${userParts.length}: ${userParts.join(', ')}). ` +
+             'כתובות נוספות שייכות לשדה "נמענים".',
+    });
+  }
+  if (user && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user)) {
+    return res.status(400).json({ ok: false, error: `"${user}" אינה כתובת מייל תקינה.` });
+  }
+
   config.email = {
     enabled: !!enabled,
     smtpHost: smtpHost || 'smtp.gmail.com',
     smtpPort: parseInt(smtpPort) || 587,
-    smtpUser: smtpUser || '',
+    smtpUser: user,
     smtpPass: newPass,
     recipients: recipients || '',
   };
@@ -1087,6 +1149,45 @@ app.post('/api/config/email', (req, res) => {
     recipients: config.email.recipients,
   });
   res.json({ ok: true, passLength: config.email.smtpPass.length, passChanged: passProvided });
+});
+
+/**
+ * Check the SMTP login without sending anything.
+ *
+ * The only previous way to find out whether credentials worked was the "send a
+ * test" button, which actually mails whoever is in the recipients box. That is
+ * the wrong tool twice over: it cannot tell a bad password from a bad recipient,
+ * and it puts real mail on the wire just to answer a yes/no question.
+ * verify() authenticates and disconnects.
+ */
+app.post('/api/config/email/verify', async (req, res) => {
+  const cfg = readConfig().email;
+  if (!cfg.smtpUser || !cfg.smtpPass) {
+    return res.status(400).json({ ok: false, error: 'חסרים פרטי SMTP' });
+  }
+  const transporter = nodemailer.createTransport({
+    host: cfg.smtpHost,
+    port: cfg.smtpPort,
+    secure: cfg.smtpPort === 465,
+    auth: { user: cfg.smtpUser, pass: cfg.smtpPass },
+  });
+  try {
+    await transporter.verify();
+    res.json({ ok: true, user: cfg.smtpUser });
+  } catch (err) {
+    // Gmail's own wording for this is "Username and Password not accepted",
+    // which sends people off resetting a password that is often not the problem.
+    const bad = /5\.7\.8|BadCredentials|Invalid login/i.test(err.message || '');
+    res.status(400).json({
+      ok: false,
+      error: bad
+        ? `גוגל דחה את ההתחברות של ${cfg.smtpUser}. כמעט תמיד הסיבה היא ש-App Password בוטלה, ` +
+          'או שהיא שייכת לחשבון גוגל אחר. צרו App Password חדשה באותו חשבון והדביקו אותה כאן.'
+        : err.message,
+    });
+  } finally {
+    transporter.close();
+  }
 });
 
 app.post('/api/config/email/test', async (req, res) => {
@@ -1241,8 +1342,13 @@ async function sendEmailReport({ childName, date, results, practice }, child) {
     </div>`;
 
   const cfg = readConfig().email;
-  if (!cfg.smtpUser || !cfg.smtpPass) {
-    console.log('[email skipped – no SMTP credentials configured]');
+  const why = emailBlockedReason(cfg);
+  if (why) {
+    // Nothing here ever reached a parent: this was a console line on a server
+    // nobody watches, so "the reports stopped" looked like nothing at all. The
+    // same reason is now returned by GET /api/config/email and shown on the
+    // settings screen.
+    console.log(`[email skipped – ${why.log}]`);
     return;
   }
 
@@ -1278,4 +1384,10 @@ import('fs').then(({ existsSync }) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`KidsLearn server running on http://localhost:${PORT}`));
+// Loopback ONLY. Node's default (0.0.0.0) put the children's profiles, photos
+// and the email settings in reach of every phone, laptop and guest device on
+// the home Wi-Fi — the app itself only ever talks to localhost. Anyone who
+// deliberately wants the server on the network can set KIDSLEARN_HOST=0.0.0.0,
+// and should add real authentication before doing so.
+const HOST = process.env.KIDSLEARN_HOST || '127.0.0.1';
+app.listen(PORT, HOST, () => console.log(`KidsLearn server running on http://localhost:${PORT}`));

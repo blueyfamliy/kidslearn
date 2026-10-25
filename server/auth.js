@@ -71,22 +71,52 @@ export function registerUser({ email, password, name }) {
   return { ok: true, token, user: publicUser(user) };
 }
 
+// ── Brute-force brake ──────────────────────────────────────────────────────
+// Unlimited guessing is cheap for an attacker and pointless for a parent who
+// mistyped. After MAX_ATTEMPTS wrong tries an email stops answering for a
+// while; one correct password clears the record. In memory on purpose — a
+// restart forgiving the counter is fine, locking a parent out of their own
+// kids' app across restarts is not.
+const failures = new Map();   // email → { count, until }
+const MAX_ATTEMPTS = 8;
+const LOCKOUT_MS = 15 * 60 * 1000;
+
+function lockedOut(email) {
+  const rec = failures.get(email);
+  if (!rec || rec.count < MAX_ATTEMPTS) return 0;
+  if (rec.until <= Date.now()) { failures.delete(email); return 0; }
+  return Math.ceil((rec.until - Date.now()) / 60000);   // minutes left
+}
+
+function noteFailure(email) {
+  const rec = failures.get(email) || { count: 0, until: 0 };
+  rec.count += 1;
+  rec.until = Date.now() + LOCKOUT_MS;
+  failures.set(email, rec);
+}
+
 export function loginUser({ email, password }) {
   email = normEmail(email);
+  const wait = lockedOut(email);
+  if (wait) return { error: `יותר מדי ניסיונות התחברות — נסו שוב בעוד ${wait} דקות` };
   const users = readUsers();
   const user = users.find(u => u.email === email);
   // Verify even when the user is missing, to avoid leaking which emails exist.
-  if (!user) { hashPassword(password || 'x'); return { error: 'אימייל או סיסמה שגויים' }; }
+  if (!user) { hashPassword(password || 'x'); noteFailure(email); return { error: 'אימייל או סיסמה שגויים' }; }
   // Google-created accounts have no local password.
   if (!user.hash) return { error: 'החשבון הזה נכנס עם "התחבר עם Google"' };
-  if (!verifyPassword(password, user.salt, user.hash)) return { error: 'אימייל או סיסמה שגויים' };
+  if (!verifyPassword(password, user.salt, user.hash)) {
+    noteFailure(email);
+    return { error: 'אימייל או סיסמה שגויים' };
+  }
+  failures.delete(email);
   const token = newToken();
   user.tokens = [...(user.tokens || []), token].slice(-10);   // keep last 10 devices
   writeUsers(users);
   return { ok: true, token, user: publicUser(user) };
 }
 
-// Sign-in via a verified external identity (Google through Supabase). Such
+// Sign-in via a verified external identity (Google through Firebase). Such
 // accounts are created on first sign-in and carry no local password.
 export function externalLogin({ email, name }) {
   email = normEmail(email);

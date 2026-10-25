@@ -7,7 +7,7 @@ import { generateHebrewExercises } from '../../../server/exercises/hebrewGenerat
 import { generateEnglishExercises, ABC_TYPES } from '../../../server/exercises/englishGenerator.js';
 import {
   sanitizeGrade, sanitizeEnglishLevel, sanitizeHebrewLevel, sanitizeMathStage, foldSession,
-  sanitizeDailyPlan, sanitizePlanUntil, planIsActive, fitSessionToCount,
+  sanitizeDailyPlan, sanitizePlanUntil, migratePlanUntil, planIsActive, fitSessionToCount,
 } from '../../../server/exercises/curriculum.js';
 import { pickNewSticker, computePracticeStreak, computeAchievements } from '../../../server/exercises/rewards.js';
 import { computeInsights } from '../../../server/exercises/insights.js';
@@ -51,7 +51,7 @@ function normalizeChild(c) {
     hebrewLevel: sanitizeHebrewLevel(c.hebrewLevel),
     mathStage: sanitizeMathStage(c.mathStage),
     dailyPlan: sanitizeDailyPlan(c.dailyPlan),
-    planUntil: sanitizePlanUntil(c.planUntil),
+    planUntil: migratePlanUntil(c.planUntil),
     allowMulDiv: !!c.allowMulDiv,   // multiplication & division off until parent enables
     hideEnglish: !!c.hideEnglish,
     hideEnglishLetters: !!c.hideEnglishLetters, // English stays, ABC letter drills hidden
@@ -234,7 +234,9 @@ function getPlanStatus(profile, date) {
   // Sticker = per-day completion lock: raising the quota mid-day never
   // "un-completes" a day that was already finished (mirrors server/storage.js).
   const rec = read(K.rewards, {})[profile.id];
-  const lockedComplete = !!(rec?.stickers || []).some(s => s.date === date);
+  // Only the DAILY sticker locks a day as complete — a magic-box bonus is a
+  // gift, not evidence the child practised (mirrors server/storage.js).
+  const lockedComplete = !!(rec?.stickers || []).some(s => s.date === date && !s.bonus);
   return {
     date,
     until: profile.planUntil,
@@ -248,7 +250,8 @@ function getPlanStatus(profile, date) {
 function maybeAwardSticker(profile, date, planStatus) {
   const all = read(K.rewards, {});
   const rec = all[profile.id] || { stickers: [] };
-  if (rec.stickers.some(s => s.date === date)) return null;
+  // One DAILY sticker per day; a magic-box bonus must not use up the chance.
+  if (rec.stickers.some(s => s.date === date && !s.bonus)) return null;
   if (planIsActive(profile, date) && !planStatus?.complete) return null;
   const emoji = pickNewSticker(rec.stickers.map(s => s.emoji));
   rec.stickers.push({ emoji, date });
@@ -508,6 +511,10 @@ export async function testEmail() {
   return { ok: false, error: 'שליחת מייל זמינה רק בגרסת המחשב (לא בגרסת הווב)' };
 }
 
+export async function verifyEmail() {
+  return { ok: false, error: 'בדיקת התחברות זמינה רק בגרסת המחשב (לא בגרסת הווב)' };
+}
+
 // ── Background removal (desktop-only feature; no-op in the web build) ──────
 export async function removeBackground(image) {
   return { ok: false, image, webVersion: true };
@@ -521,11 +528,68 @@ export async function saveBgConfig() {
 
 // ── Accounts (web build: stored in this browser only) ─────────────────────
 // The static web version has no server, so accounts live in localStorage and
-// are device-local. Passwords are obfuscated, not cryptographically secure —
-// the desktop app uses real server-side hashing instead.
+// are device-local. Passwords are hashed with PBKDF2-SHA256 (WebCrypto, random
+// salt per user) — the old scheme was base64, which anyone with a look at
+// localStorage could read straight back out, and parents reuse passwords.
+// Accounts created before that are migrated on their next successful login.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PBKDF2_ITERATIONS = 150_000;
+const enc = new TextEncoder();
+const webcrypto = globalThis.crypto;
+
+/** Pre-1.4.1 password scheme — kept only to let old accounts log in once more. */
 const obscure = (s) => { try { return btoa(unescape(encodeURIComponent(String(s)))); } catch { return String(s); } };
-const newToken = () => Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+
+const toHex = (buf) => [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+
+function randomHex(bytes) {
+  if (webcrypto?.getRandomValues) {
+    const a = new Uint8Array(bytes);
+    webcrypto.getRandomValues(a);
+    return toHex(a);
+  }
+  // Math.random() is predictable; only ever reached on a browser with no
+  // WebCrypto at all, where nothing better is available.
+  let s = '';
+  while (s.length < bytes * 2) s += Math.random().toString(16).slice(2);
+  return s.slice(0, bytes * 2);
+}
+
+const newToken = () => randomHex(32);
+
+async function derive(password, salt) {
+  const key = await webcrypto.subtle.importKey(
+    'raw', enc.encode(String(password)), 'PBKDF2', false, ['deriveBits'],
+  );
+  const bits = await webcrypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode(salt), iterations: PBKDF2_ITERATIONS },
+    key, 256,
+  );
+  return toHex(bits);
+}
+
+/** Hash fields to store on a user record. */
+async function hashPassword(password) {
+  if (!webcrypto?.subtle) return { pwAlg: 'legacy', pwSalt: '', pw: obscure(password) };
+  const pwSalt = randomHex(16);
+  return { pwAlg: 'pbkdf2', pwSalt, pw: await derive(password, pwSalt) };
+}
+
+/** Length-independent comparison, so a wrong guess leaks no timing signal. */
+function safeEqual(a, b) {
+  a = String(a || ''); b = String(b || '');
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function passwordMatches(user, password) {
+  if (user.pwAlg === 'pbkdf2' && user.pwSalt && webcrypto?.subtle) {
+    return safeEqual(user.pw, await derive(password, user.pwSalt));
+  }
+  return safeEqual(user.pw, obscure(password));
+}
 
 export async function authStatus() {
   return { hasUsers: (read(K.users, []) || []).length > 0 };
@@ -538,7 +602,7 @@ export async function registerAccount(email, password, name) {
   const users = read(K.users, []);
   if (users.some(u => u.email === email)) throw new Error('כבר קיים חשבון עם האימייל הזה');
   const token = newToken();
-  users.push({ email, name: String(name || '').trim(), pw: obscure(password), token });
+  users.push({ email, name: String(name || '').trim(), ...(await hashPassword(password)), token });
   write(K.users, users);
   return { ok: true, token, user: { email, name: String(name || '').trim() } };
 }
@@ -547,7 +611,10 @@ export async function loginAccount(email, password) {
   email = String(email || '').trim().toLowerCase();
   const users = read(K.users, []);
   const u = users.find(x => x.email === email);
-  if (!u || u.pw !== obscure(password)) throw new Error('אימייל או סיסמה שגויים');
+  if (!u || !(await passwordMatches(u, password))) throw new Error('אימייל או סיסמה שגויים');
+  // An account still on the old base64 scheme is upgraded the moment its owner
+  // proves the password — no re-registration, no lost account.
+  if (u.pwAlg !== 'pbkdf2') Object.assign(u, await hashPassword(password));
   u.token = newToken();
   write(K.users, users);
   return { ok: true, token: u.token, user: { email: u.email, name: u.name } };
@@ -565,27 +632,11 @@ export async function logoutAccount(token) {
   return { ok: true };
 }
 
-// ── Google sign-in (web build: Supabase implicit flow, no server) ──────────
-// The page redirects to Supabase's authorize endpoint; Google authenticates;
-// Supabase redirects back here with #access_token in the URL hash, which
-// completeGoogleRedirect() turns into a local account session. Only the
-// identity (email + name) comes from Google — all data stays in this browser.
-// NOTE: the web app's URL must be listed in Supabase → Auth → URL
-// Configuration → Redirect URLs, otherwise Supabase falls back to the Site URL.
-const SUPABASE_URL = 'https://gkodcsmksurhlnxvpiry.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_dGqsCHlAHyA-hKeNuvljtg_ZDEyeNw_'; // publishable — public by design
 
-export async function googleLoginStart() {
-  const redirect = window.location.origin + window.location.pathname;
-  window.location.href =
-    `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirect)}`;
-  return { ok: true, redirecting: true };
-}
-
-// The web flow never polls — the page navigates away and comes back.
-export async function googleLoginResult() {
-  return { ok: false, pending: true };
-}
+// ── Google sign-in (web build: Firebase Authentication, no server) ─────────
+// Firebase's SDK opens the Google popup and verifies the identity for us;
+// only the verified email + name are used to upsert a device-local account —
+// all data stays in this browser.
 
 // Upsert the local account for a Google identity and mint a session.
 function googleLocalSession(email, name) {
@@ -599,50 +650,8 @@ function googleLocalSession(email, name) {
   return { ok: true, token: acc.token, user: { email, name: acc.name || '' } };
 }
 
-/**
- * If the URL carries a Supabase #access_token (back from Google), turn it
- * into a local session: fetch the identity, upsert a google-flagged account,
- * and return {ok, token, user}. Returns null when there is nothing to do.
- * (Legacy path — the primary web sign-in is Google Identity Services below.)
- */
-export async function completeGoogleRedirect() {
-  const hash = String(window.location.hash || '');
-  if (!hash.includes('access_token=')) return null;
-  const params = new URLSearchParams(hash.replace(/^#/, ''));
-  const accessToken = params.get('access_token');
-  // Scrub the tokens from the URL/history immediately, success or not.
-  try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch {}
-  if (!accessToken) return null;
-
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) throw new Error('אימות Google נכשל — נסו שוב');
-  const info = await res.json();
-  const email = String(info.email || '').trim().toLowerCase();
-  if (!email) throw new Error('לא התקבל אימייל מ-Google');
-  const name = String(info.user_metadata?.full_name || info.user_metadata?.name || '').trim();
-  return googleLocalSession(email, name);
-}
-
-// ── Google Identity Services (primary web sign-in — no Supabase involved) ──
-// The official Google button returns a signed ID-token JWT; we only need the
-// identity (email + name) for a device-local account, so decoding the payload
-// client-side is sufficient — there is no server or cloud data to protect.
-export const GOOGLE_WEB_CLIENT_ID = '986091348674-s0vc3kjhaer172ae4ol6rh56uur61h92.apps.googleusercontent.com';
-
-function decodeJwtPayload(jwt) {
-  const part = String(jwt || '').split('.')[1] || '';
-  const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
-  return JSON.parse(decodeURIComponent(escape(atob(b64))));
-}
-
-export async function googleCredentialLogin(credential) {
-  let payload;
-  try { payload = decodeJwtPayload(credential); }
-  catch { throw new Error('אימות Google נכשל — נסו שוב'); }
-  const email = String(payload.email || '').trim().toLowerCase();
-  if (!email) throw new Error('לא התקבל אימייל מ-Google');
-  const name = String(payload.name || '').trim();
+export async function googleFirebaseLogin() {
+  const { firebaseGoogleSignIn } = await import('./firebaseClient.js');
+  const { email, name } = await firebaseGoogleSignIn();
   return googleLocalSession(email, name);
 }

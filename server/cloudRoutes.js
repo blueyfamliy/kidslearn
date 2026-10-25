@@ -21,6 +21,7 @@ import {
   consentPage, oobCodePage, oauthErrorPage,
 } from './cloudConsole.js';
 import { loginUser, registerUser, userForToken, listAccounts, deviceEmail } from './auth.js';
+import { listingForApp, listingsByOwner, deleteListing, isAdmin, pendingCount } from './coli.js';
 import {
   readChildren, getChild, getStats, getProgress, getRewards, activeSubjects,
 } from './storage.js';
@@ -51,10 +52,10 @@ const setSession = (res, token) =>
 const clearSession = (res) =>
   res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
 
-const sessionUser = (req) => userForToken(readCookie(req, COOKIE));
+export const sessionUser = (req) => userForToken(readCookie(req, COOKIE));
 
 /** Console pages behind the login wall. */
-function requireDev(req, res, next) {
+export function requireDev(req, res, next) {
   const user = sessionUser(req);
   if (!user) return res.redirect('/cloud');
   req.devUser = user;
@@ -105,11 +106,21 @@ function takeReveal(appId) {
   return r;
 }
 
+/** Store status + admin badge, shown on every console screen. */
+const coliCtx = (user) => {
+  const admin = isAdmin(user.email);
+  return { admin, pending: admin ? pendingCount() : 0 };
+};
+
 cloudRouter.get('/cloud/apps', requireDev, (req, res) => {
+  const storeByApp = {};
+  for (const l of listingsByOwner(req.devUser.email)) storeByApp[l.appId] = l.status;
   res.send(dashboardPage({
     user: req.devUser,
     apps: listApps(req.devUser.email),
     flash: String(req.query.flash || ''),
+    storeByApp,
+    ...coliCtx(req.devUser),
   }));
 });
 
@@ -143,6 +154,8 @@ cloudRouter.get('/cloud/apps/:id', requireDev, (req, res) => {
     reveal: takeReveal(app.id),
     baseUrl: baseUrl(req),
     flash: String(req.query.flash || ''),
+    listing: listingForApp(app.id, req.devUser.email),
+    ...coliCtx(req.devUser),
   }));
 });
 
@@ -177,6 +190,8 @@ cloudRouter.post('/cloud/apps/:id/apikey', requireDev, (req, res) => {
 cloudRouter.post('/cloud/apps/:id/delete', requireDev, (req, res) => {
   const r = deleteApp(req.params.id, req.devUser.email);
   if (r.error) return res.status(404).send(oauthErrorPage('לא נמצא', r.error));
+  // The store listing has no meaning without its app — take it down with it.
+  deleteListing(req.params.id, req.devUser.email);
   res.redirect(`/cloud/apps?flash=${encodeURIComponent('האפליקציה נמחקה')}`);
 });
 
