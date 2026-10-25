@@ -261,4 +261,11 @@ export const fetchMagicBox    = WEB ? (async () => ({ unlocked: false })) : serv
 export const openMagicBox     = WEB ? (async () => { throw new Error('web'); }) : serverOpenMagicBox;
 // Desktop only: the server opens the system browser, the app polls for the result.
 
+// Web-only parent tools (device-local): emails + mailto report, reminder, backup.
+export const fetchParentConfig = WEB ? local.fetchParentConfig : (async () => ({ webVersion: false }));
+export const saveParentConfig = WEB ? local.saveParentConfig : (async () => ({ ok: false }));
+export const buildParentReport = WEB ? local.buildParentReport : (async () => ({ subject: '', body: '' }));
+export const exportAllData = WEB ? local.exportAllData : (async () => null);
+export const importAllData = WEB ? local.importAllData : (async () => ({ ok: false }));
+
 export const IS_WEB = WEB;

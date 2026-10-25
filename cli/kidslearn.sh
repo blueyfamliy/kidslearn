@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-REPO="deanavraham-bit/kidslearn"
+REPO="blueyfamliy/kidslearn"
 API="https://api.github.com/repos/${REPO}/releases/latest"
 PAGE="https://github.com/${REPO}/releases/latest"
 

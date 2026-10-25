@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { fetchChildren, deleteChild, IS_WEB } from '../api';
+import { fetchChildren, deleteChild, fetchParentConfig, IS_WEB } from '../api';
 import AddChildModal from './AddChildModal';
 import RewardsModal from './RewardsModal';
 import { APP_VERSION } from '../version';
+import { reminderDue, maybeNotify } from '../lib/reminder';
 import './HomeScreen.css';
 
 const SUBJECT_DESC = {
@@ -14,6 +15,8 @@ const SUBJECT_DESC = {
 const GRADE_TAGS = {
   gan_to_a: '🎓 הכנה לכיתה א׳',
   a_to_b: '🎓 הכנה לכיתה ב׳',
+  grade_a: '🏫 כיתה א׳',
+  grade_b: '🏫 כיתה ב׳',
 };
 
 function subjectsOf(child) {
@@ -32,6 +35,22 @@ export default function HomeScreen({ onSelect, onMistakes, onParents }) {
   const [editMode, setEditMode] = useState(false);
   const [pickingSubjectFor, setPickingSubjectFor] = useState(null);
   const [rewardsFor, setRewardsFor] = useState(null);
+  const [reminder, setReminder] = useState(null);   // web: the parents' daily reminder
+
+  useEffect(() => {
+    if (!IS_WEB) return;
+    fetchParentConfig().then(c => setReminder(c.reminder || null)).catch(() => {});
+  }, []);
+
+  // Past the reminder time and someone hasn't practised yet → nudge (banner +
+  // one browser notification a day, if the parent allowed notifications).
+  const waiting = IS_WEB && reminder && reminderDue(reminder)
+    ? children.filter(c => !c.practicedToday && !c.todayPlan?.complete)
+    : [];
+  const waitingNames = waiting.map(c => c.name).join(' ו');
+  useEffect(() => {
+    if (waiting.length) maybeNotify(`${waitingNames} — זמן התרגול היומי!`);
+  }, [waitingNames]);
 
   function load() {
     fetchChildren()
@@ -73,6 +92,12 @@ export default function HomeScreen({ onSelect, onMistakes, onParents }) {
         <div className="home-stars">⭐ KidsLearn ⭐ <span className="app-version">v{APP_VERSION}</span></div>
         <h1>ברוכים הבאים!</h1>
         <p>{!loading && children.length === 0 ? 'הוסיפו ילד/ה כדי להתחיל ✨' : 'מי רוצה ללמוד היום?'}</p>
+        {waiting.length > 0 && (
+          <div className="reminder-banner">
+            ⏰ זמן התרגול היומי! {waitingNames}{' '}
+            {waiting.length === 1 ? (waiting[0].gender === 'girl' ? 'עוד לא תרגלה היום' : 'עוד לא תרגל היום') : 'עוד לא תרגלו היום'}
+          </div>
+        )}
       </div>
 
       <div className="home-cards">

@@ -1,0 +1,54 @@
+# Builds the web app into docs/app whenever the source changes on main, so the
+# site (kidslearn.fun, served by GitHub Pages from main:/docs) updates from ANY
+# computer with a plain `git push` — no local build needed.
+name: Build web app (docs/app)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'client/**'
+      - 'server/exercises/**'
+      - 'server/ml/**'
+      - 'package.json'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build the web app
+        working-directory: client
+        run: npm run build:web
+
+      - name: Commit the built site
+        run: |
+          git config user.name "kidslearn-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A docs/app
+          if git diff --cached --quiet; then
+            echo "docs/app unchanged — nothing to commit"
+            exit 0
+          fi
+          git commit -m "Build web app for GitHub Pages [skip ci]"
+          git push

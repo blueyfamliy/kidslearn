@@ -4,7 +4,7 @@
 
 ## ⬇️ הורדה והתקנה (למשתמשים)
 
-הורידו את הגרסה למערכת ההפעלה שלכם מ-[**דף ההורדות (Releases)**](https://github.com/deanavraham-bit/kidslearn/releases/latest):
+הורידו את הגרסה למערכת ההפעלה שלכם מ-[**דף ההורדות (Releases)**](https://github.com/blueyfamliy/kidslearn/releases/latest):
 
 | מערכת הפעלה | קובץ להורדה | התקנה |
 |---|---|---|
@@ -19,12 +19,12 @@
 
 **Windows (PowerShell):**
 ```powershell
-irm https://raw.githubusercontent.com/deanavraham-bit/kidslearn/main/cli/install-command.ps1 | iex
+irm https://raw.githubusercontent.com/blueyfamliy/kidslearn/main/cli/install-command.ps1 | iex
 ```
 
 **macOS / Linux (Terminal):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/deanavraham-bit/kidslearn/main/cli/install-command.sh | bash
+curl -fsSL https://raw.githubusercontent.com/blueyfamliy/kidslearn/main/cli/install-command.sh | bash
 ```
 
 לאחר מכן, בטרמינל חדש:
@@ -67,7 +67,7 @@ kidslearn
 
 ```powershell
 # 1. שכפל את הריפו
-git clone https://github.com/<USERNAME>/kidslearn.git
+git clone https://github.com/blueyfamliy/kidslearn.git
 cd kidslearn
 
 # 2. התקן תלויות (קליינט + שרת + שורש)
@@ -191,3 +191,65 @@ GET /api/coli/categories      # קטגוריות + מונים
 - `server/data/coli.json` + `coli-media/` — דפי החנות והאייקונים שהועלו
 
 הם נשארים רק במחשב המקומי שלך.
+
+## 👨‍👩‍👦 עבודה משותפת על הפרויקט (אבא + דין)
+
+הפרויקט חי ב-GitHub: <https://github.com/blueyfamliy/kidslearn>. **האתר**
+(<https://kidslearn.fun>) מוגש על ידי GitHub Pages מתוך התיקייה `docs/` בענף
+`main` — כל `git push` ל-`main` מעדכן את האתר תוך דקה-שתיים.
+
+### פעם אחת, במחשב חדש
+
+1. להתקין [Git](https://git-scm.com/) ו-[Node.js 22+](https://nodejs.org/) (ולנוחות: [GitHub CLI](https://cli.github.com/)).
+2. להיכנס ל-GitHub (`gh auth login`) עם משתמש שיש לו הרשאה לריפו.
+3. לשכפל ולהתקין:
+
+```bash
+git clone https://github.com/blueyfamliy/kidslearn.git
+cd kidslearn
+npm install
+cd client && npm install && cd ..
+```
+
+### להוסיף שותף לריפו (בעל הריפו מריץ פעם אחת)
+
+```bash
+gh api -X PUT repos/blueyfamliy/kidslearn/collaborators/<GITHUB-USERNAME> -f permission=admin
+```
+
+או דרך האתר: Settings → Collaborators → Add people. השותף מקבל מייל ומאשר.
+
+### לעדכן את האתר
+
+```bash
+git pull
+# ... עורכים קוד ...
+cd client && npm run build:web && cd ..      # בונה את docs/app (אפשר לדלג — ראו למטה)
+git add -A
+git commit -m "מה השתנה"
+git push
+```
+
+> אין צורך לבנות מקומית: ה-Action `Build web app (docs/app)` בונה את האתר
+> אוטומטית בכל push ל-`main` שמשנה את `client/` או את מחוללי התרגילים, ומעלה
+> את התוצאה ל-`docs/app`. אחרי push שלכם, לפני עריכה נוספת, הריצו `git pull`.
+
+### בדיקה מקומית לפני push
+
+```bash
+cd client && npm run build:web && cd ..
+node .claude/serve-docs.mjs docs 8099     # ואז http://127.0.0.1:8099/app/
+```
+
+(או `npm run dev` לפיתוח עם שרת מקומי — זו גרסת הדסקטופ, לא האתר.)
+
+### איפה מה
+
+| מה | איפה |
+|----|------|
+| תוכנית הלימודים (מסלולים, שלבים) | `server/exercises/curriculum.js`, `mathGenerator.js`, `hebrewGenerator.js`, `englishGenerator.js`, `docs/curriculum-map.md` |
+| הקראה בעברית (קול, נורמליזציה של טקסט) | `client/src/lib/tts.js` |
+| שכבת הנתונים של האתר (localStorage) | `client/src/lib/localApi.js` |
+| אזור ההורים (דוח, תזכורת, קול, גיבוי, היסטוריה) | `client/src/components/ParentsScreen.jsx` |
+| תזכורת יומית (קובץ יומן) | `client/src/lib/reminder.js` |
+| מספר הגרסה (מוצג באתר) | `package.json` → `version` — להעלות בכל שינוי |

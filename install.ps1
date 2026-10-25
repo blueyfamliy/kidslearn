@@ -1,5 +1,5 @@
 # KidsLearn - PowerShell one-line installer
-# Usage:  irm https://raw.githubusercontent.com/deanavraham-bit/kidslearn/main/install.ps1 | iex
+# Usage:  irm https://raw.githubusercontent.com/blueyfamliy/kidslearn/main/install.ps1 | iex
 
 $ErrorActionPreference = 'Stop'
 
@@ -9,7 +9,7 @@ Write-Host "   KidsLearn - Installer" -ForegroundColor Cyan
 Write-Host "  ========================================" -ForegroundColor Cyan
 Write-Host ""
 
-$repo = "deanavraham-bit/kidslearn"
+$repo = "blueyfamliy/kidslearn"
 $dest = Join-Path $env:TEMP "KidsLearn-Setup.exe"
 
 Write-Host "[1/2] Finding the latest version..." -ForegroundColor Yellow

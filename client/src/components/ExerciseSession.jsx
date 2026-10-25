@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { fetchExercises, fetchMistakes, fetchChildren, saveSession } from '../api';
 import { MATH_TOPICS, topicsForChild } from '../../../server/exercises/mathGenerator.js';
-import { speakCelebration, speakEncouragement, speakEnglish } from '../lib/tts';
+import { speakCelebration, speakEncouragement, speakEnglish, setSpeechGender } from '../lib/tts';
 import { playCorrect, playWrong } from '../lib/sfx';
 import ExerciseCard from './ExerciseCard';
 import ResultScreen from './ResultScreen';
@@ -123,6 +123,17 @@ export default function ExerciseSession({ child, childName, subject, practice, p
   const [confirmExit, setConfirmExit] = useState(false); // "really leave?" overlay
 
   const date = new Date().toISOString().slice(0, 10);
+
+  // The voice cheers in the child's own gender ("אלוף!" for a boy, "אלופה!"
+  // for a girl) — the cheers used to be feminine for everyone.
+  useEffect(() => {
+    fetchChildren()
+      .then(data => {
+        const p = (data.children || []).find(c => c.id === child);
+        if (p) setSpeechGender(p.gender);
+      })
+      .catch(() => {});
+  }, [child]);
 
   // The picker offers every sub-topic of the child's curriculum (שעון, שקלים...).
   useEffect(() => {

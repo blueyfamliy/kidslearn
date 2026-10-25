@@ -358,3 +358,15 @@
   font-weight: 800;
   font-size: 0.95rem;
 }
+
+/* Daily reminder nudge (web): shown once the chosen time has passed and a
+   child has not practised yet today. */
+.reminder-banner {
+  background: #fff3e0; color: #e65100; border-radius: 14px; padding: 10px 20px;
+  font-weight: 800; font-size: 1rem; box-shadow: 0 4px 14px rgba(230, 81, 0, 0.25);
+  animation: reminder-pulse 2.4s ease-in-out infinite;
+}
+@keyframes reminder-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}

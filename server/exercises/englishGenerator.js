@@ -1524,7 +1524,7 @@ export function generateEnglishExercises(stage = 1, reviewExercises = [], track 
   // Long words are unlocked by the prep track OR by the stage itself: a child
   // who reached stage 4 has earned the full vocabulary even with no track
   // (otherwise dropping a track would silently shrink their English).
-  const hard = track === 'a_to_b' || s >= 4;
+  const hard = track === 'a_to_b' || track === 'grade_b' || s >= 4;
   const band = Math.min(s + (hard ? 1 : 0), MAX_WORD_BAND);
   let plan = [...STAGE_PLANS[s]];
   if (hideLetters) {

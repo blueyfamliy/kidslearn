@@ -17,8 +17,10 @@ const MATH_LEVELS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 // difficulty climbs automatically (3 successful days in a row = next stage).
 const GRADE_OPTIONS = [
   { value: 'none', label: 'ללא מסלול — לפי רמה ידנית' },
-  { value: 'gan_to_a', label: '🌱 עולה מגן חובה לכיתה א׳' },
-  { value: 'a_to_b', label: '📗 עולה מכיתה א׳ לכיתה ב׳' },
+  { value: 'grade_a', label: '🏫 כיתה א׳ — תוכנית הלימודים השנתית' },
+  { value: 'grade_b', label: '🏫 כיתה ב׳ — תוכנית הלימודים השנתית' },
+  { value: 'gan_to_a', label: '🌱 חופש גדול: עולה מגן חובה לכיתה א׳' },
+  { value: 'a_to_b', label: '📗 חופש גדול: עולה מכיתה א׳ לכיתה ב׳' },
 ];
 
 // English starting stage (Foundation Level). The level climbs automatically

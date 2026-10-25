@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Registers the "kidslearn" command on macOS / Linux.
 #
-#   curl -fsSL https://raw.githubusercontent.com/deanavraham-bit/kidslearn/main/cli/install-command.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/blueyfamliy/kidslearn/main/cli/install-command.sh | bash
 #
 # Then open a new terminal and type:  kidslearn
 
 set -euo pipefail
 
-REPO="deanavraham-bit/kidslearn"
+REPO="blueyfamliy/kidslearn"
 RAW="https://raw.githubusercontent.com/${REPO}/main/cli/kidslearn.sh"
 
 echo ""

@@ -12,7 +12,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repo = 'deanavraham-bit/kidslearn'
+$repo = 'blueyfamliy/kidslearn'
 $releasesPage = "https://github.com/$repo/releases/latest"
 
 if ($Help) {

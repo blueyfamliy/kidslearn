@@ -538,7 +538,7 @@ export function generateHebrewExercises(weakness = {}, reviewExercises = [], sta
     const stagePlan = PREP_STAGES[Math.min(Math.max(1, Number(s)), 4)];
     slots = [...stagePlan.slots];
     pools = stagePlan.pools;
-    if (track === 'a_to_b') {
+    if (track === 'a_to_b' || track === 'grade_b') {
       // Same stage, older child: every easy (difficulty-1) slot becomes a
       // medium slot when the stage has medium content to offer.
       slots = slots.map(d => (d === 1 && pools[2]?.length ? 2 : d));

@@ -44,6 +44,7 @@ const TEENS_F = ['עשר', 'אחת עשרה', 'שתים עשרה', 'שלוש ע�
 const TEENS_M = ['עשרה', 'אחד עשר', 'שנים עשר', 'שלושה עשר', 'ארבעה עשר', 'חמישה עשר', 'שישה עשר', 'שבעה עשר', 'שמונה עשר', 'תשעה עשר'];
 const TENS = ['', '', 'עשרים', 'שלושים', 'ארבעים', 'חמישים', 'שישים', 'שבעים', 'שמונים', 'תשעים'];
 const HUNDREDS = ['', 'מאה', 'מאתיים', 'שלוש מאות', 'ארבע מאות', 'חמש מאות', 'שש מאות', 'שבע מאות', 'שמונה מאות', 'תשע מאות'];
+const THOUSANDS = ['', 'אלף', 'אלפיים', 'שלושת אלפים', 'ארבעת אלפים', 'חמשת אלפים', 'ששת אלפים', 'שבעת אלפים', 'שמונת אלפים', 'תשעת אלפים'];
 
 /**
  * 0..9999 → Hebrew words. `gender` 'f' (default — abstract counting and
@@ -60,7 +61,7 @@ export function numberToHebrew(n, gender = 'f', construct = false) {
   if (n < 20) return teens[n - 10];
   const parts = [];
   const th = Math.floor(n / 1000), h = Math.floor((n % 1000) / 100), t = Math.floor((n % 100) / 10), o = n % 10;
-  if (th) parts.push(th === 1 ? 'אלף' : th === 2 ? 'אלפיים' : `${ONES_F[th].replace('שלוש', 'שלושת').replace('ארבע', 'ארבעת').replace('חמש', 'חמשת').replace('שש', 'ששת').replace('שבע', 'שבעת').replace('שמונה', 'שמונת').replace('תשע', 'תשעת')} אלפים`);
+  if (th) parts.push(THOUSANDS[th]);
   if (h) parts.push(HUNDREDS[h]);
   const rest = t * 10 + o;
   if (rest) {
@@ -74,33 +75,43 @@ export function numberToHebrew(n, gender = 'f', construct = false) {
 }
 
 // Plural nouns whose gender is NOT what their ending suggests.
-const FEM_IN_IM = new Set(['אבנים', 'נשים', 'שנים', 'ביצים', 'מילים', 'פעמים', 'ערים', 'דרכים', 'רגליים', 'ידיים', 'עיניים', 'אוזניים', 'שיניים', 'נעליים', 'גרביים', 'אצבעות']);
-const MASC_IN_OT = new Set(['לוחות', 'קולות', 'שולחנות', 'ארונות', 'חלונות', 'מקומות', 'שבועות', 'לילות', 'אבות', 'רחובות', 'קירות', 'כיסאות', 'מזלגות', 'סלים', 'פירות', 'עפרונות', 'שעונות', 'וילונות']);
-const FEM_SINGULAR_EXCEPTIONS = new Set(['כוס', 'עיר', 'אבן', 'דרך', 'רוח', 'אוזן', 'יד', 'רגל', 'עין', 'כף', 'שן', 'נפש', 'ציפור', 'כיכר', 'גלידה']);
+const FEM_IN_IM = new Set(['אבנים', 'נשים', 'שנים', 'ביצים', 'מילים', 'פעמים', 'ערים', 'דרכים', 'רגליים', 'ידיים', 'עיניים', 'אוזניים', 'שיניים', 'נעליים', 'גרביים', 'צלעות']);
+const MASC_IN_OT = new Set(['לוחות', 'קולות', 'שולחנות', 'ארונות', 'חלונות', 'מקומות', 'שבועות', 'לילות', 'אבות', 'רחובות', 'קירות', 'כיסאות', 'מזלגות', 'פירות', 'עפרונות', 'שעונות', 'וילונות', 'חודשות']);
 
-/** Grammatical gender of the noun that follows a number: 'm' | 'f' | null (no noun). */
-function nounGender(word) {
+/**
+ * Grammatical gender of a PLURAL noun: 'm' | 'f' | null when the word is not a
+ * plural noun (then the number is abstract → feminine, as in "שלוש ועוד ארבע").
+ * Only plurals count: "נתנה 1 לגננת" must not read "לגננת" as the counted thing.
+ */
+function pluralGender(word) {
   if (!word) return null;
   const w = word.replace(/[^א-ת]/g, '');
-  if (!w || w.length < 2) return null;
-  // Words that are not nouns at all end the counting phrase → abstract (feminine).
-  if (/^(ועוד|פחות|כפול|שווה|לחלק|או|ואז|כמה|זה|זו|הוא|היא|יש|אין|של|על|עם|עד|גם|רק|כבר|עוד|מתוך|בתור|בסך|אחורה|קדימה)$/.test(w)) return null;
-  if (FEM_IN_IM.has(w) || FEM_SINGULAR_EXCEPTIONS.has(w)) return 'f';
+  if (!w || w.length < 3) return null;
+  if (FEM_IN_IM.has(w)) return 'f';
   if (MASC_IN_OT.has(w)) return 'm';
   if (/ות$/.test(w)) return 'f';
   if (/(ים|יים)$/.test(w)) return 'm';
-  if (/[הת]$/.test(w)) return 'f';   // singular feminine (בננה, מכונית)
-  return 'm';                         // singular masculine (תפוח, בלון)
+  return null;
 }
 
-const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{200D}\u{20E3}\u{2300}-\u{23FF}\u{25A0}-\u{25FF}\u{2190}-\u{21FF}\u{E000}-\u{F8FF}]/gu;
+// Final letters turn regular when a suffix is glued on (מוכן/ה → מוכנה).
+const UNFINAL = { 'ך': 'כ', 'ם': 'מ', 'ן': 'נ', 'ף': 'פ', 'ץ': 'צ' };
+const unfinal = (w) => w.replace(/[ךםןףץ]$/, (c) => UNFINAL[c]);
+
+// Slash pairs the suffix rule gets wrong.
+const SLASH_SPECIAL = { 'את/ה': { boy: 'אתה', girl: 'את' }, 'אתה/את': { boy: 'אתה', girl: 'את' } };
+
+const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{1F1E6}-\u{1F1FF}\u{2300}-\u{23FF}\u{25A0}-\u{25FF}\u{2190}-\u{21FF}\u{E000}-\u{F8FF}]|\u{FE0F}|\u{200D}|\u{20E3}/gu;
 
 /**
  * Rewrite display text into natural spoken Hebrew. Pure, idempotent enough to
  * run on text that was already partly spoken-ready (e.g. mathSpeech output).
  */
 export function toSpokenHebrew(text, gender = _gender) {
-  let s = cleanForSpeech(text);
+  // "15 ___ 9" (compare) — the blank means "compared to"; do it before the
+  // generic cleaner turns underscores into spaces.
+  let s = String(text || '').replace(/(\d)\s*_{2,}\s*(\d)/g, '$1 לעומת $2');
+  s = cleanForSpeech(s);
   if (!s) return '';
 
   // 1. Emoji and pictographs are read aloud by some voices ("red apple") — drop them.
@@ -108,49 +119,52 @@ export function toSpokenHebrew(text, gender = _gender) {
 
   // 2. Gendered slashes: ילד/ה, לומד/ת, נסה/י, מוכן/ה → the child's form.
   s = s.replace(/([א-ת]+)\/(ה|ת|י|ית|ים|ות)(?![א-ת])/g, (m, base, suf) => {
+    const special = SLASH_SPECIAL[m];
+    if (special) return special[gender === 'boy' ? 'boy' : 'girl'];
     if (gender === 'boy') return base;
     if (suf === 'י' && /ה$/.test(base)) return base.slice(0, -1) + 'י';   // נסה/י → נסי
-    return base + suf;
+    return unfinal(base) + suf;
   });
 
   // 3. Currency and common abbreviations.
-  s = s.replace(/ש[״"']ח/g, 'שקלים').replace(/\bשח\b/g, 'שקלים');
+  s = s.replace(/ש[״"']ח/g, 'שקלים').replace(/(^|\s)שח(?=\s|$|[.,?!])/g, '$1שקלים');
 
-  // 4. Arithmetic symbols left in the text (mathSpeech handles ltr questions;
-  //    this covers "4 + 4 + 4" inside hints and rtl questions).
-  s = s
-    .replace(/(\d)\s*\+\s*(?=[\d?])/g, '$1 ועוד ')
-    .replace(/(\d)\s*[×x\*]\s*(?=[\d?])/g, '$1 כפול ')
-    .replace(/(\d)\s*:\s*(?=\d{1,2}(?!\d)(?!:))/g, (m, d, off, str) => {
-      // "3:00" / "3:30" are clock times — handled below; "12 : 4" is division.
-      const after = str.slice(off + m.length, off + m.length + 2);
-      return /^(00|30|15|45)$/.test(after) && !/\s/.test(m) ? m : `${d} לחלק ל`;
-    })
-    .replace(/(\d)\s*-\s*(?=[\d?])/g, '$1 פחות ')
-    .replace(/(\d)\s*=\s*\?/g, '$1 שווה כמה')
-    .replace(/\?\s*=\s*(\d)/g, 'כמה שווה $1')
-    .replace(/(\d|כמה)\s*=\s*(?=[\d?כ])/g, '$1 שווה ')
-    .replace(/(\d)\s*___\s*(\d)/g, '$1 לעומת $2')
-    .replace(/(\d)\s*[<>]\s*(\d)/g, (m, a, b) => (m.includes('>') ? `${a} גדול מ-${b}` : `${a} קטן מ-${b}`));
-
-  // 5. Clock times "3:00" → "שלוש", "3:30" → "שלוש וחצי", "3:15" → "שלוש ורבע".
+  // 4. Clock times "3:00" → "שלוש", "3:30" → "שלוש וחצי", "3:15" → "שלוש ורבע"
+  //    (before the arithmetic pass, which would read ":" as division).
   s = s.replace(/(?<!\d)(\d{1,2}):(00|15|30|45)(?!\d)/g, (m, h, mm) => {
     const hour = numberToHebrew(Number(h), 'f');
     return mm === '00' ? hour : mm === '30' ? `${hour} וחצי` : mm === '15' ? `${hour} ורבע` : `רבע ל${numberToHebrew((Number(h) % 12) + 1, 'f')}`;
   });
 
-  // 6. Numbers → words, agreeing with the noun that follows.
+  // 5. Arithmetic symbols (mathSpeech handles ltr questions; this covers hints
+  //    and rtl questions like "4 + 4 + 4 = ?" or "134 = ? + 30 + 4").
+  const NUM = '(\\d+|כמה)';
+  s = s
+    .replace(/\?(?=\s*[=+\-×x*:])/g, 'כמה')                // "? + 7" → "כמה ועוד 7"
+    .replace(/(?<=[=+\-×x*:]\s*)\?/g, 'כמה')               // "7 = ?" → "7 שווה כמה"
+    .replace(new RegExp(`${NUM}\\s*\\+\\s*(?=\\d|כמה)`, 'g'), '$1 ועוד ')
+    .replace(new RegExp(`${NUM}\\s*[×x*]\\s*(?=\\d|כמה)`, 'g'), '$1 כפול ')
+    .replace(new RegExp(`${NUM}\\s*:\\s*(?=\\d|כמה)`, 'g'), '$1 לחלק ל')
+    .replace(new RegExp(`${NUM}\\s*-\\s*(?=\\d|כמה)`, 'g'), '$1 פחות ')
+    .replace(new RegExp(`${NUM}\\s*=\\s*(?=\\d|כמה)`, 'g'), '$1 שווה ')
+    .replace(/(\d)\s*>\s*(\d)/g, '$1 גדול מ-$2')
+    .replace(/(\d)\s*<\s*(\d)/g, '$1 קטן מ-$2');
+
+  // 6. Numbers → words, agreeing with the plural noun that follows ("שתי בננות",
+  //    "חמישה שקלים"); with no noun after, the last plural noun in the sentence
+  //    decides ("9 ממתקים … עוד 11" → "אחד עשר"); otherwise abstract feminine.
   //    Prefix letters glued with a hyphen ("ל-10", "מ-3", "ב-5") stay glued.
-  s = s.replace(/(?:([בלמוכשה])-)?(\d{1,4})(?!\d)(?:\s+([א-ת]+))?/g, (m, prefix, num, next) => {
+  s = s.replace(/(?:([בלמוכשה])-)?(\d{1,4})(?!\d)(\s+[א-ת]+)?/g, (m, prefix, num, nextRaw, offset, whole) => {
     const n = Number(num);
-    const g = nounGender(next);
-    let words;
-    if (g && n === 1 && next && !/(ים|ות|יים)$/.test(next)) {
-      // "1 תפוח" → "תפוח אחד", "1 בננה" → "בננה אחת" (number after a singular noun)
-      words = `${next} ${g === 'm' ? 'אחד' : 'אחת'}`;
-      return `${prefix ? prefix : ''}${words}`;
+    const next = nextRaw ? nextRaw.trim() : '';
+    let g = pluralGender(next);
+    if (!g) {
+      const before = whole.slice(0, offset).split(/[.?!]/).pop() || '';
+      const words = before.split(/\s+/).reverse();
+      const anchor = words.find(w => pluralGender(w));
+      g = anchor ? pluralGender(anchor) : null;
     }
-    words = numberToHebrew(n, g || 'f', !!g);
+    const words = numberToHebrew(n, g || 'f', !!pluralGender(next));
     const out = prefix ? `${prefix}${words}` : words;
     return next ? `${out} ${next}` : out;
   });
@@ -235,10 +249,8 @@ async function pickVoice(lang) {
   }
   const en = voices.filter(isEnglishVoice);
   if (!en.length) return null;
-  return en.sort((a, b) => {
-    const s = (v) => voiceScore(v) + (/^en[-_]us$/i.test(v.lang) ? 4 : 0) + (/^en[-_]gb$/i.test(v.lang) ? 2 : 0);
-    return s(b) - s(a);
-  })[0];
+  const s = (v) => voiceScore(v) + (/^en[-_]us$/i.test(v.lang) ? 4 : 0) + (/^en[-_]gb$/i.test(v.lang) ? 2 : 0);
+  return en.sort((a, b) => s(b) - s(a))[0];
 }
 
 function speakViaWebAPI(text, lang = 'he', onEnd = null) {

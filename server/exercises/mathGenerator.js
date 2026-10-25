@@ -866,6 +866,123 @@ function makeTwoDigitSub() {
   };
 }
 
+// ── Grade 2: addition with carrying, subtraction with borrowing (המרה/פריטה) ─
+function makeTwoDigitAddCarry() {
+  // Ones add up past ten → one ten is carried; the result stays below 100.
+  const t = randInt(1, 8);
+  const o = randInt(1, 9);
+  const a = 10 * t + o;
+  const bo = randInt(10 - o, 9);                  // o + bo >= 10
+  const b = bo + 10 * randInt(0, 8 - t);          // tens: t + bt + 1 <= 9
+  return {
+    type: 'two_digit_add_carry', difficulty: 3, dir: 'ltr',
+    question: `${a} + ${b} = ?`, answer: a + b,
+    hint: `${o} ועוד ${bo} זה ${o + bo}: כותבים ${(o + bo) % 10} ומעבירים עשרת אחת לעשרות`,
+  };
+}
+
+function makeTwoDigitSubBorrow() {
+  // The ones digit of the minuend is smaller than the subtrahend's → borrow a ten.
+  const t = randInt(2, 9);
+  const o = randInt(0, 8);
+  const a = 10 * t + o;
+  const bo = randInt(o + 1, 9);
+  const b = bo + 10 * randInt(0, t - 1);
+  return {
+    type: 'two_digit_sub_borrow', difficulty: 3, dir: 'ltr',
+    question: `${a} - ${b} = ?`, answer: a - b,
+    hint: `${o} קטן מ-${bo}, אז פורטים עשרת: ${10 + o} פחות ${bo} זה ${10 + o - bo}`,
+  };
+}
+
+// ── Times tables (לוח הכפל — כיתה ב׳: קודם 2, 5, 10, אחר כך כל הלוח) ────────
+const ALL_TABLES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+function makeMulTable(tables = [2, 5, 10]) {
+  const a = pick(tables);
+  const b = randInt(1, 10);
+  const variant = pick(['fact', 'fact', 'missing', 'word']);
+  if (variant === 'word') {
+    const item = pick(COUNT_ITEMS);
+    const packs = randInt(2, 6);
+    return {
+      type: 'mul_table', difficulty: 3, dir: 'rtl',
+      question: `בכל שקית יש ${a} ${item.name}. כמה ${item.name} יש ב-${packs} שקיות?`,
+      answer: a * packs,
+      hint: `${packs} פעמים ${a}: ${Array(packs).fill(a).join(' ועוד ')}`,
+      dedupKey: `multable|word|${a}x${packs}|${item.name}`,
+    };
+  }
+  if (variant === 'missing') {
+    return {
+      type: 'mul_table', difficulty: 3, dir: 'ltr',
+      question: `${a} × ? = ${a * b}`, answer: b,
+      hint: `כמה פעמים ${a} נותן ${a * b}?`,
+      dedupKey: `multable|miss|${a}x${b}`,
+    };
+  }
+  const [x, y] = pick([true, false]) ? [a, b] : [b, a];
+  return {
+    type: 'mul_table', difficulty: 3, dir: 'ltr',
+    question: `${x} × ${y} = ?`, answer: a * b,
+    hint: `${x} כפול ${y} — ${y} פעמים ${x}`,
+    dedupKey: `multable|${a}x${b}`,
+  };
+}
+
+function makeDivTable(tables = [2, 5, 10]) {
+  const a = pick(tables);
+  const b = randInt(1, 10);
+  if (pick([true, false])) {
+    return {
+      type: 'div_table', difficulty: 3, dir: 'rtl',
+      question: `${a * b} עפרונות מחלקים שווה בשווה בין ${a} ילדים. כמה עפרונות יקבל כל ילד?`,
+      answer: b,
+      hint: `${a * b} לחלק ל-${a}`,
+      dedupKey: `divtable|word|${a * b}:${a}`,
+    };
+  }
+  return {
+    type: 'div_table', difficulty: 3, dir: 'ltr',
+    question: `${a * b} : ${a} = ?`, answer: b,
+    hint: `כמה פעמים ${a} נכנס ב-${a * b}?`,
+    dedupKey: `divtable|${a * b}:${a}`,
+  };
+}
+
+// ── Three-digit numbers without regrouping (תחום ה-1000 — סוף כיתה ב׳) ──────
+function makeThreeDigitAdd() {
+  const h = randInt(1, 8), t = randInt(0, 8), o = randInt(0, 8);
+  const a = 100 * h + 10 * t + o;
+  const variant = pick(['hundreds', 'tens', 'ones']);
+  const b = variant === 'hundreds' ? 100 * randInt(1, 9 - h)
+    : variant === 'tens' ? 10 * randInt(1, 9 - t)
+    : randInt(1, 9 - o);
+  return {
+    type: 'three_digit_add', difficulty: 3, dir: 'ltr',
+    question: `${a} + ${b} = ?`, answer: a + b,
+    hint: variant === 'hundreds' ? `רק ספרת המאות משתנה: ${h} ועוד ${b / 100} מאות`
+      : variant === 'tens' ? `רק ספרת העשרות משתנה: ${t} ועוד ${b / 10} עשרות`
+      : `רק ספרת האחדות משתנה: ${o} ועוד ${b}`,
+  };
+}
+
+function makeThreeDigitSub() {
+  const h = randInt(2, 9), t = randInt(1, 9), o = randInt(1, 9);
+  const a = 100 * h + 10 * t + o;
+  const variant = pick(['hundreds', 'tens', 'ones']);
+  const b = variant === 'hundreds' ? 100 * randInt(1, h - 1)
+    : variant === 'tens' ? 10 * randInt(1, t)
+    : randInt(1, o);
+  return {
+    type: 'three_digit_sub', difficulty: 3, dir: 'ltr',
+    question: `${a} - ${b} = ?`, answer: a - b,
+    hint: variant === 'hundreds' ? `רק ספרת המאות משתנה: ${h} פחות ${b / 100} מאות`
+      : variant === 'tens' ? `רק ספרת העשרות משתנה: ${t} פחות ${b / 10} עשרות`
+      : `רק ספרת האחדות משתנה: ${o} פחות ${b}`,
+  };
+}
+
 function makeMissingAdd(max) {
   const c = randInt(3, max);
   const known = randInt(1, c - 1);
@@ -1465,7 +1582,162 @@ const PREP_PLANS = {
       () => makePictogram(),
     ],
   ],
+
+  // ═══ School-year tracks ═══════════════════════════════════════════════════
+  // grade_a — כיתה א׳ (15 questions): numbers to 20 → add/sub to 20 across the
+  // ten → the decimal structure to 100 → add/sub to 100 without regrouping.
+  grade_a: [
+    // Stage 1 – מספרים עד 20, חיבור וחיסור עד 10
+    (op) => [
+      ...(op === 'add'
+        ? Array(6).fill(() => makeAddition(10))
+        : op === 'sub'
+          ? Array(6).fill(() => makeSubtraction(10))
+          : [() => makeAddition(10), () => makeAddition(10), () => makeAddition(10),
+             () => makeSubtraction(10), () => makeSubtraction(10), () => makeSubtraction(10)]),
+      () => (op === 'sub' ? makeSubtraction(10) : makeComplete(10)),
+      () => makeNumberAfter(20), () => makeNumberBefore(20),
+      () => makeCompareLeveled(20), () => makeSequenceLeveled(20),
+      () => (op === 'sub' ? makeWordSubLeveled(10) : makeWordAddLeveled(10)),
+      () => makeCountCategory(true),
+      geoGrade2,
+      () => makeOrdinalPosition(10),
+    ],
+    // Stage 2 – חיבור וחיסור עד 20 (מעבר העשרת)
+    (op) => [
+      ...(op === 'add'
+        ? Array(6).fill(GENERATORS.addition_20)
+        : op === 'sub'
+          ? Array(6).fill(GENERATORS.subtraction_20)
+          : [GENERATORS.addition_20, GENERATORS.addition_20, GENERATORS.addition_20,
+             GENERATORS.subtraction_20, GENERATORS.subtraction_20, GENERATORS.subtraction_20]),
+      () => (op === 'sub' ? makeMissingSub(20) : GENERATORS.complete_10()),
+      () => (op === 'sub' ? makeMissingSub(20) : op === 'add' ? makeMissingAdd(20) : pick([makeMissingAdd, makeMissingSub])(20)),
+      () => makeCompareLeveled(20), () => makeSequenceLeveled(20),
+      () => (op === 'sub' ? makeWordSubLeveled(20) : makeWordAddLeveled(20)),
+      () => (op === 'add' ? makeWordAddLeveled(20) : makeWordSubLeveled(20)),
+      geoGrade2,
+      () => makeClockReading(),                 // שעות שלמות
+      makeDaysOfWeek,
+    ],
+    // Stage 3 – המבנה העשרוני עד 100
+    (op) => [
+      tensOnes, tensOnes, tensOnes,
+      () => makeNumberAfter(100), () => makeNumberBefore(100),
+      () => makeCompareLeveled(100),
+      skipCount, skipCount,
+      ...(op === 'add' ? [makeRoundTensAdd, makeRoundTensAdd]
+        : op === 'sub' ? [makeRoundTensSub, makeRoundTensSub]
+        : [makeRoundTensAdd, makeRoundTensSub]),
+      () => (op === 'add' ? GENERATORS.addition_20() : op === 'sub' ? GENERATORS.subtraction_20() : pick([GENERATORS.addition_20, GENERATORS.subtraction_20])()),
+      () => (op === 'sub' ? makeWordSubLeveled(20) : makeWordAddLeveled(20)),
+      () => makeMoneyCount({ gan: true }),
+      () => makePictogram({ gan: true }),
+      geoGrade2,
+    ],
+    // Stage 4 – חיבור וחיסור עד 100 ללא המרה (סוף כיתה א׳)
+    (op) => [
+      ...(op === 'add'
+        ? Array(6).fill(makeTwoDigitAdd)
+        : op === 'sub'
+          ? Array(6).fill(makeTwoDigitSub)
+          : [makeTwoDigitAdd, makeTwoDigitAdd, makeTwoDigitAdd, makeTwoDigitSub, makeTwoDigitSub, makeTwoDigitSub]),
+      () => (op === 'sub' ? makeMissingSub(30) : op === 'add' ? makeMissingAdd(30) : pick([makeMissingAdd, makeMissingSub])(30)),
+      tensOnes, skipCount,
+      () => makeCompareLeveled(100),
+      () => (op === 'sub' ? makeWordSubLeveled(30) : makeWordAddLeveled(30)),
+      () => (op === 'add' ? makeWordAddLeveled(30) : makeWordSubLeveled(30)),
+      () => makeClockReading({ halves: true }),
+      () => makeMoneyCount(),
+      geoGrade2,
+    ],
+  ],
+
+  // grade_b — כיתה ב׳ (20 questions): regrouping → first times tables (2, 5,
+  // 10) → multiplication & division within 100 → numbers to 1000.
+  grade_b: [
+    // Stage 1 – חיבור וחיסור עד 100 עם המרה
+    (op) => [
+      ...(op === 'add'
+        ? Array(8).fill(makeTwoDigitAddCarry)
+        : op === 'sub'
+          ? Array(8).fill(makeTwoDigitSubBorrow)
+          : [makeTwoDigitAddCarry, makeTwoDigitAddCarry, makeTwoDigitAddCarry, makeTwoDigitAddCarry,
+             makeTwoDigitSubBorrow, makeTwoDigitSubBorrow, makeTwoDigitSubBorrow, makeTwoDigitSubBorrow]),
+      () => (op === 'add' ? makeTwoDigitAdd() : op === 'sub' ? makeTwoDigitSub() : pick([makeTwoDigitAdd, makeTwoDigitSub])()),
+      () => (op === 'sub' ? makeMissingSub(50) : op === 'add' ? makeMissingAdd(50) : pick([makeMissingAdd, makeMissingSub])(50)),
+      tensOnes,
+      () => makeEvenOdd(50),
+      () => (op === 'sub' ? makeWordSubLeveled(50) : makeWordAddLeveled(50)),
+      () => (op === 'add' ? makeWordAddLeveled(50) : makeWordSubLeveled(50)),
+      () => makeClockReading({ halves: true }),
+      () => makeMoneyCount(),
+      () => makePictogram(),
+      geoGrade2,
+      skipCount,
+      () => makeCompareLeveled(100),
+    ],
+    // Stage 2 – כפל ראשון: לוחות 2, 5 ו-10
+    (op) => [
+      makeRepeatedAdd, makeRepeatedAdd,
+      () => makeMulTable([2, 5, 10]), () => makeMulTable([2, 5, 10]), () => makeMulTable([2, 5, 10]),
+      () => makeMulTable([2, 5, 10]), () => makeMulTable([2, 5, 10]), () => makeMulTable([2, 5, 10]),
+      () => makeDivTable([2, 5, 10]),
+      ...(op === 'add'
+        ? [makeTwoDigitAddCarry, makeTwoDigitAddCarry, makeTwoDigitAddCarry, makeTwoDigitAddCarry]
+        : op === 'sub'
+          ? [makeTwoDigitSubBorrow, makeTwoDigitSubBorrow, makeTwoDigitSubBorrow, makeTwoDigitSubBorrow]
+          : [makeTwoDigitAddCarry, makeTwoDigitAddCarry, makeTwoDigitSubBorrow, makeTwoDigitSubBorrow]),
+      () => makeEvenOdd(100),
+      skipCount,
+      () => (op === 'sub' ? makeWordSubLeveled(100) : makeWordAddLeveled(100)),
+      () => makeClockReading({ halves: true, duration: true }),
+      () => makeMoneyCount(),
+      geoGrade2,
+      () => makePictogram(),
+    ],
+    // Stage 3 – כפל וחילוק בתחום ה-100
+    (op) => [
+      () => makeMulTable([2, 3, 4, 5, 6, 10]), () => makeMulTable([2, 3, 4, 5, 6, 10]),
+      () => makeMulTable([2, 3, 4, 5, 6, 10]), () => makeMulTable([2, 3, 4, 5, 6, 10]),
+      () => makeDivTable([2, 3, 4, 5, 10]), () => makeDivTable([2, 3, 4, 5, 10]), () => makeDivTable([2, 3, 4, 5, 10]),
+      makeMulDiv, makeMulDiv,
+      ...(op === 'add'
+        ? [makeTwoDigitAddCarry, makeTwoDigitAddCarry, makeTwoDigitAddCarry, makeTwoDigitAddCarry]
+        : op === 'sub'
+          ? [makeTwoDigitSubBorrow, makeTwoDigitSubBorrow, makeTwoDigitSubBorrow, makeTwoDigitSubBorrow]
+          : [makeTwoDigitAddCarry, makeTwoDigitAddCarry, makeTwoDigitSubBorrow, makeTwoDigitSubBorrow]),
+      () => (op === 'sub' ? makeWordSubLeveled(100) : makeWordAddLeveled(100)),
+      () => (op === 'add' ? makeWordAddLeveled(100) : makeWordSubLeveled(100)),
+      () => makeClockReading({ halves: true, duration: true }),
+      () => makeMoneyCount(),
+      geoGrade2,
+      () => makeEvenOdd(100),
+      tensOnes,
+    ],
+    // Stage 4 – מספרים עד 1000
+    (op) => [
+      GENERATORS.hundreds_in_number, GENERATORS.build_hundreds, GENERATORS.expanded_form_3, GENERATORS.skip_count_100,
+      ...(op === 'add'
+        ? [makeThreeDigitAdd, makeThreeDigitAdd, makeThreeDigitAdd]
+        : op === 'sub'
+          ? [makeThreeDigitSub, makeThreeDigitSub, makeThreeDigitSub]
+          : [makeThreeDigitAdd, makeThreeDigitAdd, makeThreeDigitSub]),
+      () => makeCompareLeveled(1000),
+      () => makeNumberAfter(1000), () => makeNumberBefore(1000),
+      () => makeMulTable(ALL_TABLES), () => makeMulTable(ALL_TABLES), () => makeMulTable(ALL_TABLES),
+      () => makeDivTable(ALL_TABLES), () => makeDivTable(ALL_TABLES),
+      () => (op === 'add' ? makeTwoDigitAddCarry() : op === 'sub' ? makeTwoDigitSubBorrow() : pick([makeTwoDigitAddCarry, makeTwoDigitSubBorrow])()),
+      () => (op === 'sub' ? makeWordSubLeveled(100) : makeWordAddLeveled(100)),
+      () => makeClockReading({ halves: true, duration: true }),
+      () => makeMoneyCount(),
+      geoGrade2,
+    ],
+  ],
 };
+
+// Tracks where multiplication is the curriculum itself — never swapped out.
+const MUL_BUILT_IN = ['grade_b'];
 
 /**
  * A prep-track session (מסלול הכנה): `track` is 'gan_to_a' or 'a_to_b',
@@ -1482,7 +1754,7 @@ export function generatePrepMath(track, stage, reviewExercises = [], operation =
   // primer) stay hidden until the parent flips the "already learned mul/div"
   // switch. Their slots become two-digit add/sub the child can already do, so
   // the session keeps its full length.
-  if (!allowMulDiv) {
+  if (!allowMulDiv && !MUL_BUILT_IN.includes(track)) {
     const sub = () => (op === 'add' ? makeTwoDigitAdd()
       : op === 'sub' ? makeTwoDigitSub()
       : pick([makeTwoDigitAdd, makeTwoDigitSub])());
@@ -1523,7 +1795,7 @@ const TOPIC_SESSION_SIZE = 12;
 export function topicsForChild(ctx = {}) {
   if (ctx.track) {
     const t = ['place_value', 'sequences', 'compare', 'missing', 'geometry', 'clock', 'money', 'data', 'week_days'];
-    if (ctx.allowMulDiv) t.push('muldiv');
+    if (ctx.allowMulDiv || MUL_BUILT_IN.includes(ctx.track)) t.push('muldiv');
     return t;
   }
   if (ctx.level) return ['compare', 'sequences', 'missing'];
@@ -1532,9 +1804,11 @@ export function topicsForChild(ctx = {}) {
 
 // A pool of generator thunks for one topic, tuned to the child's range.
 function topicPool(topic, ctx = {}) {
-  const gan = ctx.track === 'gan_to_a';
-  const hard = ctx.track === 'a_to_b';
   const stage = ctx.stage || 1;
+  // A first grader starts the year at kindergarten-exit level and ends it at
+  // the "rising second grader" level — the topic pools follow the stage.
+  const gan = ctx.track === 'gan_to_a' || (ctx.track === 'grade_a' && stage <= 2);
+  const hard = ctx.track === 'a_to_b' || ctx.track === 'grade_b' || (ctx.track === 'grade_a' && stage >= 3);
   const L = ctx.level || null;
 
   switch (topic) {
@@ -1569,6 +1843,10 @@ function topicPool(topic, ctx = {}) {
     case 'week_days':
       return [makeDaysOfWeek];
     case 'muldiv':
+      if (MUL_BUILT_IN.includes(ctx.track)) {
+        const tables = stage >= 3 ? ALL_TABLES : [2, 5, 10];
+        return [() => makeMulTable(tables), () => makeMulTable(tables), () => makeDivTable(tables), makeMulDiv, makeRepeatedAdd];
+      }
       return ctx.allowMulDiv ? [makeMulDiv, makeMulDiv, makeRepeatedAdd] : null;
     default:
       return null;

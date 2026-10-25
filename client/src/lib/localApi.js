@@ -22,6 +22,7 @@ const K = {
   mistakes: 'kidslearn:mistakes',
   rewards: 'kidslearn:rewards',
   users: 'kidslearn:users',
+  parent: 'kidslearn:parent',      // parent emails + daily reminder (this browser only)
 };
 
 // No children ship with the app – each family creates their own profiles.
@@ -81,7 +82,15 @@ function getChildProfile(id) {
 
 export async function fetchChildren() {
   const today = new Date().toISOString().slice(0, 10);
-  return { children: readChildren().map(c => ({ ...c, todayPlan: getPlanStatus(c, today) })) };
+  const history = readHistory();
+  return {
+    children: readChildren().map(c => ({
+      ...c,
+      todayPlan: getPlanStatus(c, today),
+      // For the daily-reminder nudge on the home screen.
+      practicedToday: (history[c.id] || []).some(s => s.date === today),
+    })),
+  };
 }
 
 export async function addChild({ name, gender, subject, subjects, mathLevel, grade, englishLevel, hebrewLevel, mathStage, dailyPlan, planUntil, allowMulDiv, hideEnglish, hideEnglishLetters, avatar, photo }) {
@@ -118,6 +127,7 @@ export async function updateChild(id, { name, gender, subject, subjects, mathLev
   const list = readChildren();
   const child = list.find(c => c.id === id);
   if (!child) throw new Error('הילד לא נמצא');
+  const prevGrade = child.grade;
   if (name !== undefined) child.name = String(name).trim() || child.name;
   if (gender !== undefined) child.gender = gender === 'girl' ? 'girl' : 'boy';
   if (subjects !== undefined) {
@@ -140,7 +150,17 @@ export async function updateChild(id, { name, gender, subject, subjects, mathLev
   if (avatar !== undefined) child.avatar = avatar;
   if (photo !== undefined) child.photo = photo;
   write(K.children, list);
+  // Switching track (e.g. summer prep → the school-year track) restarts the
+  // math ladder at the chosen starting stage: a stage-4 "rising 2nd grader"
+  // record must not open כיתה ב׳ at ITS stage 4 (numbers to 1000).
+  if (grade !== undefined && child.grade !== prevGrade) resetMathProgress(child.id, child.mathStage);
   return { ok: true, child };
+}
+
+function resetMathProgress(childId, stage) {
+  const all = read(K.progress, {});
+  all[progressKey(childId, 'math')] = { stage: sanitizeMathStage(stage), streak: 0, lastDate: null, lastDateSuccess: false };
+  write(K.progress, all);
 }
 
 export async function deleteChild(id) {
@@ -498,6 +518,115 @@ export async function fetchStats(child) {
     recent: sessions.slice(-10).reverse(),
     progress,
   };
+}
+
+// ── Parent settings: emails + daily reminder (this browser only) ─────────
+// The web version has no server, so nothing is ever sent anywhere by itself:
+// the parent's addresses are stored here, and "send report" opens the
+// parent's OWN mail app (mailto:) with the report text filled in.
+const DEFAULT_PARENT = {
+  emails: '',
+  reminder: { enabled: false, time: '17:00', days: [0, 1, 2, 3, 4] },   // Sun–Thu, school days
+};
+
+function readParent() {
+  const saved = read(K.parent, {});
+  return { ...DEFAULT_PARENT, ...saved, reminder: { ...DEFAULT_PARENT.reminder, ...(saved.reminder || {}) } };
+}
+
+export async function fetchParentConfig() {
+  return { ...readParent(), webVersion: true };
+}
+
+export async function saveParentConfig(patch = {}) {
+  const cur = readParent();
+  const next = {
+    ...cur,
+    ...patch,
+    emails: String(patch.emails !== undefined ? patch.emails : cur.emails || '')
+      .split(/[,\s;]+/).map(s => s.trim().toLowerCase()).filter(s => EMAIL_RE.test(s)).join(', '),
+    reminder: { ...cur.reminder, ...(patch.reminder || {}) },
+  };
+  if (!/^\d{2}:\d{2}$/.test(next.reminder.time || '')) next.reminder.time = DEFAULT_PARENT.reminder.time;
+  next.reminder.days = [...new Set((next.reminder.days || []).map(Number).filter(d => d >= 0 && d <= 6))].sort();
+  write(K.parent, next);
+  return { ok: true, config: next };
+}
+
+const SUBJECT_HE = { math: 'חשבון', hebrew: 'עברית', english: 'אנגלית' };
+const fmtDay = (d) => new Date(d).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' });
+
+/**
+ * Plain-text report for the parents' mail (today / last N days), built from
+ * the local history only. Short on purpose — mailto: links have length limits.
+ */
+export async function buildParentReport({ days = 1 } = {}) {
+  const children = readChildren();
+  const history = readHistory();
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const since = new Date(now); since.setDate(now.getDate() - (days - 1));
+  const sinceStr = since.toISOString().slice(0, 10);
+  const title = days === 1 ? 'דוח יומי' : days === 7 ? 'דוח שבועי' : `דוח ${days} ימים`;
+
+  const lines = [`⭐ KidsLearn — ${title}`, days === 1 ? fmtDay(now) : `${fmtDay(since)} – ${fmtDay(now)}`, ''];
+  const names = [];
+  for (const c of children) {
+    names.push(c.name);
+    const sessions = (history[c.id] || []).filter(s => (s.date || String(s.savedAt || '').slice(0, 10)) >= sinceStr);
+    lines.push(`${c.gender === 'girl' ? '👧' : '👦'} ${c.name}`);
+    if (!sessions.length) { lines.push('   לא תרגל/ה בתקופה הזו.', ''); continue; }
+    const bySubject = {};
+    for (const s of sessions) {
+      const key = s.subject || 'math';
+      const b = bySubject[key] || (bySubject[key] = { sessions: 0, total: 0, firstTry: 0, wrong: [] });
+      b.sessions++;
+      for (const r of s.results || []) {
+        b.total++;
+        if (r.firstAttemptCorrect !== false && r.correct) b.firstTry++;
+        else if (r.question && !b.wrong.includes(r.question.split('\n')[0])) b.wrong.push(r.question.split('\n')[0]);
+      }
+    }
+    for (const [subject, b] of Object.entries(bySubject)) {
+      const pct = b.total ? Math.round(b.firstTry / b.total * 100) : 0;
+      lines.push(`   ${SUBJECT_HE[subject] || subject}: ${b.total} תרגילים ב-${b.sessions} מפגשים · ${pct}% נכון בניסיון ראשון`);
+      if (b.wrong.length) lines.push(`   טעויות לחזרה: ${b.wrong.slice(0, 6).join(' | ')}${b.wrong.length > 6 ? ` (+${b.wrong.length - 6})` : ''}`);
+    }
+    const plan = getPlanStatus(c, todayStr);
+    if (plan) lines.push(`   מכסה יומית: ${plan.complete ? 'הושלמה ✅' : plan.subjects.map(p => `${SUBJECT_HE[p.subject] || p.subject} ${Math.min(p.done, p.target)}/${p.target}`).join(', ')}`);
+    const stages = [];
+    for (const s of c.subjects || []) {
+      if (s === 'math' && !c.grade) continue;
+      const p = getProgress(c.id, s);
+      const stage = s === 'english' ? Math.max(p.stage, c.englishLevel || 1)
+        : s === 'hebrew' ? Math.max(p.stage, c.hebrewLevel || 1)
+        : Math.max(p.stage, c.mathStage || 1);
+      stages.push(`${SUBJECT_HE[s]} שלב ${stage}`);
+    }
+    if (stages.length) lines.push(`   התקדמות: ${stages.join(' · ')}`);
+    lines.push('');
+  }
+  lines.push('— נוצר ב-KidsLearn (kidslearn.fun). הנתונים נשמרים במכשיר המשפחה בלבד.');
+  return { subject: `KidsLearn — ${title}: ${names.join(', ')}`, body: lines.join('\n') };
+}
+
+// ── Backup & restore (the data lives only in this browser) ───────────────
+const EXPORT_KEYS = ['children', 'history', 'review', 'progress', 'mistakes', 'rewards', 'parent'];
+
+export async function exportAllData() {
+  const data = {};
+  for (const k of EXPORT_KEYS) data[k] = read(K[k], null);
+  return { app: 'kidslearn', version: 1, exportedAt: new Date().toISOString(), data };
+}
+
+export async function importAllData(payload) {
+  if (!payload || payload.app !== 'kidslearn' || typeof payload.data !== 'object') {
+    throw new Error('זה לא קובץ גיבוי של KidsLearn');
+  }
+  for (const k of EXPORT_KEYS) {
+    if (payload.data[k] !== undefined && payload.data[k] !== null) write(K[k], payload.data[k]);
+  }
+  return { ok: true, children: readChildren().length };
 }
 
 // ── Email (not available without a server) ──────────────────────────────

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # KidsLearn - Mac/Linux one-line installer
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/deanavraham-bit/kidslearn/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/blueyfamliy/kidslearn/main/install.sh | bash
 
 set -e
 
-REPO="deanavraham-bit/kidslearn"
+REPO="blueyfamliy/kidslearn"
 echo ""
 echo "  ========================================"
 echo "   KidsLearn - Installer"

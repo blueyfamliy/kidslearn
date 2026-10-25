@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Lexi — kidslearn model">
+  <title>Lexi — kidslearn model</title>
+
+  <!-- Badge: the plane sits above the wordmark, overlapping the "e". -->
+  <circle cx="256" cy="150" r="102" fill="#4B10F5"/>
+
+  <!-- Top-down airliner, nose up-right at 45deg. -->
+  <g transform="translate(256 150) rotate(45) scale(1.28)">
+    <path fill="#fff" d="M0,-52 C6.5,-52 10.5,-41 10.5,-28.5 L10.5,-10 L50,14.5 L50,25 L10.5,14.5
+                         L10.5,31 L22.5,43 L22.5,49.5 L0,43 L-22.5,49.5 L-22.5,43 L-10.5,31
+                         L-10.5,14.5 L-50,25 L-50,14.5 L-10.5,-10 L-10.5,-28.5
+                         C-10.5,-41 -6.5,-52 0,-52 Z"/>
+    <!-- engine pylons -->
+    <rect fill="#fff" x="-34" y="-9" width="7" height="15" rx="2"/>
+    <rect fill="#fff" x="27" y="-9" width="7" height="15" rx="2"/>
+  </g>
+
+  <text x="256" y="330" text-anchor="middle" fill="#12121a"
+        font-family="Georgia, 'Times New Roman', 'Frank Ruhl Libre', serif"
+        font-size="176" letter-spacing="-2">Lexi</text>
+
+  <text x="256" y="398" text-anchor="middle" fill="#12121a"
+        font-family="Georgia, 'Times New Roman', 'Frank Ruhl Libre', serif"
+        font-size="52">kidslearn model</text>
+</svg>

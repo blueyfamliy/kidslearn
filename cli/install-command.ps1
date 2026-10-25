@@ -1,11 +1,11 @@
 # Registers the "kidslearn" command on this Windows machine.
 #
-#   irm https://raw.githubusercontent.com/deanavraham-bit/kidslearn/main/cli/install-command.ps1 | iex
+#   irm https://raw.githubusercontent.com/blueyfamliy/kidslearn/main/cli/install-command.ps1 | iex
 #
 # After it finishes, open a new terminal and type:  kidslearn
 
 $ErrorActionPreference = 'Stop'
-$repo = 'deanavraham-bit/kidslearn'
+$repo = 'blueyfamliy/kidslearn'
 $raw  = "https://raw.githubusercontent.com/$repo/main/cli"
 $bin  = Join-Path $env:LOCALAPPDATA 'KidsLearn\bin'
 

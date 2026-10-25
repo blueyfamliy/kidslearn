@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
-import { fetchStats, fetchHistory, fetchChildren, fetchInsights, updateChild, fetchMagicBox, openMagicBox, IS_WEB } from '../api';
-import { PREP_TRACKS, stageName, STREAK_TO_ADVANCE, HEBREW_STAGES, ENGLISH_STAGES } from '../../../server/exercises/curriculum.js';
+import {
+  fetchStats, fetchHistory, fetchChildren, fetchInsights, updateChild, fetchMagicBox, openMagicBox, IS_WEB,
+  fetchParentConfig, saveParentConfig, buildParentReport, exportAllData, importAllData,
+} from '../api';
+import { PREP_TRACKS, NEXT_TRACK, stageName, STREAK_TO_ADVANCE, HEBREW_STAGES, ENGLISH_STAGES } from '../../../server/exercises/curriculum.js';
+import { listHebrewVoices, getTtsSettings, saveTtsSettings, speakSample, stopSpeech } from '../lib/tts';
+import { buildReminderIcs, downloadTextFile, requestNotifyPermission, notificationsSupported, DAY_NAMES_HE } from '../lib/reminder';
 import EmailSettings from './EmailSettings';
 import BgRemovalSettings from './BgRemovalSettings';
 import LexiLogo from './LexiLogo';
@@ -51,6 +56,12 @@ const TYPE_LABELS = {
   round_tens_sub: 'חיסור עשרות שלמות',
   two_digit_add: 'חיבור דו-ספרתי',
   two_digit_sub: 'חיסור דו-ספרתי',
+  two_digit_add_carry: 'חיבור עם המרה',
+  two_digit_sub_borrow: 'חיסור עם פריטה',
+  three_digit_add: 'חיבור עד 1000',
+  three_digit_sub: 'חיסור עד 1000',
+  mul_table: 'לוח הכפל',
+  div_table: 'חילוק',
   missing_number: 'מספר חסר בתרגיל',
   even_odd: 'זוגי או אי-זוגי',
   repeated_add: 'חיבור חוזר (לקראת כפל)',
@@ -469,13 +480,404 @@ function ProgressSection({ profile, progress }) {
   );
 }
 
+// ── School-year switch ──────────────────────────────────────────────────────
+// The summer prep tracks lead into the school-year tracks. Once the year has
+// started, offer the switch right here (one click) instead of leaving a child
+// on "rising first grader" material all year.
+function TrackSwitchSection({ profile, onSaved }) {
+  const [saving, setSaving] = useState(false);
+  if (!profile || !['gan_to_a', 'a_to_b'].includes(profile.grade)) return null;
+  const next = NEXT_TRACK[profile.grade];
+  const nextTrack = PREP_TRACKS[next];
+  if (!nextTrack) return null;
+
+  async function go() {
+    setSaving(true);
+    try {
+      const { child } = await updateChild(profile.id, { grade: next, mathStage: 1 });
+      onSaved(child);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="section track-switch">
+      <h2>🏫 שנת הלימודים התחילה — {profile.name}</h2>
+      <p>
+        {profile.name} עדיין במסלול הקיץ "{PREP_TRACKS[profile.grade].label}". המסלול השנתי{' '}
+        <b>{nextTrack.label}</b> עוקב אחרי תוכנית הלימודים של משרד החינוך לאורך השנה:{' '}
+        {nextTrack.stageNames.join(' • ')}.
+      </p>
+      <button className="quota-save" onClick={go} disabled={saving}>
+        {saving ? 'עובר...' : `🚀 מעבר למסלול "${nextTrack.label}" (מתחילים משלב 1)`}
+      </button>
+      <div className="hint-text">
+        💡 ההיסטוריה, המדבקות ואוסף הטעויות נשמרים. רק סולם החשבון מתחיל מהשלב הראשון של
+        המסלול החדש — ועולה לבד אחרי {STREAK_TO_ADVANCE} ימי הצלחה. אפשר גם לבחור שלב התחלה אחר בעריכת הילד/ה.
+      </div>
+    </div>
+  );
+}
+
+// ── Web-only parent tools (everything stays in this browser) ────────────────
+const REPORT_RANGES = [{ d: 1, l: 'היום' }, { d: 7, l: 'השבוע' }, { d: 30, l: 'החודש' }];
+
+// Parent emails + a report that opens in the parent's OWN mail app (mailto:).
+// There is no server behind the site, so nothing is sent by itself.
+function ParentReportSection({ children }) {
+  const [emails, setEmails] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [days, setDays] = useState(1);
+  const [report, setReport] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => { fetchParentConfig().then(c => setEmails(c.emails || '')).catch(() => {}); }, []);
+  useEffect(() => { buildParentReport({ days }).then(setReport).catch(() => setReport(null)); }, [days, children]);
+
+  async function save() {
+    try {
+      const { config } = await saveParentConfig({ emails });
+      setEmails(config.emails);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {}
+  }
+
+  const mailto = report
+    ? `mailto:${encodeURIComponent(emails)}?subject=${encodeURIComponent(report.subject)}&body=${encodeURIComponent(report.body)}`
+    : '#';
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(report.body);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setShowPreview(true);
+    }
+  }
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  async function share() {
+    try { await navigator.share({ title: report.subject, text: report.body }); } catch {}
+  }
+
+  return (
+    <div className="section">
+      <h2>📧 דוח להורים</h2>
+      <p className="section-intro">
+        הדוח נבנה מהנתונים ששמורים במכשיר הזה בלבד, ונפתח באפליקציית המייל שלכם — שום דבר לא נשלח לשרת.
+      </p>
+      <label className="field-row">
+        <span>כתובות המייל של ההורים (מופרדות בפסיק)</span>
+        <input
+          type="text" dir="ltr" value={emails}
+          onChange={e => setEmails(e.target.value)} onBlur={save}
+          placeholder="ima@gmail.com, aba@gmail.com"
+        />
+      </label>
+      <div className="chip-row">
+        {REPORT_RANGES.map(o => (
+          <button key={o.d} className={`chip ${days === o.d ? 'on' : ''}`} onClick={() => setDays(o.d)}>{o.l}</button>
+        ))}
+      </div>
+      <div className="btn-row">
+        <a className="btn-main" href={mailto} onClick={save}>📧 פתיחה במייל</a>
+        <button className="btn-soft" onClick={copy} disabled={!report}>{copied ? '✓ הועתק' : '📋 העתקה'}</button>
+        {canShare && <button className="btn-soft" onClick={share} disabled={!report}>📤 שיתוף</button>}
+        <button className="btn-soft" onClick={() => setShowPreview(v => !v)} disabled={!report}>
+          {showPreview ? 'הסתרת התצוגה' : '👁️ תצוגה מקדימה'}
+        </button>
+      </div>
+      {saved && <div className="hint-text">✓ הכתובות נשמרו במכשיר הזה</div>}
+      {showPreview && report && <pre className="report-preview">{report.body}</pre>}
+      <div className="hint-text">
+        💡 הדוח כולל לכל ילד/ה: כמה תרגילים, אחוז הצלחה בניסיון ראשון, הטעויות לחזרה, המכסה היומית והשלב בכל מקצוע.
+      </div>
+    </div>
+  );
+}
+
+// Which voice reads the questions. Edge ships free neural Hebrew voices
+// (Hila / Avri); plain Windows Chrome only has the old robotic "Asaf".
+function VoiceSection() {
+  const [voices, setVoices] = useState(null);
+  const [settings, setSettings] = useState(() => getTtsSettings());
+
+  useEffect(() => {
+    listHebrewVoices().then(setVoices).catch(() => setVoices([]));
+    return () => stopSpeech();
+  }, []);
+
+  function update(patch) {
+    setSettings(s => ({ ...s, ...patch }));
+    saveTtsSettings(patch);
+  }
+
+  const hasNatural = (voices || []).some(v => v.natural);
+  return (
+    <div className="section">
+      <h2>🔊 הקול שמקריא לילדים</h2>
+      {voices === null && <div className="loading">טוען קולות...</div>}
+      {voices && voices.length === 0 && (
+        <div className="quota-expired">
+          ⚠️ בדפדפן הזה אין קול עברי. פתחו את kidslearn.fun ב-<b>Microsoft Edge</b> (מגיע עם הקולות
+          הטבעיים "Hila" ו-"Avri" בחינם, בלי התקנה), או בכרום בטלפון/טאבלט.
+        </div>
+      )}
+      {voices && voices.length > 0 && (
+        <>
+          <label className="field-row">
+            <span>קול</span>
+            <select value={settings.voiceURI} onChange={e => update({ voiceURI: e.target.value })}>
+              <option value="">אוטומטי — הקול הטבעי ביותר כאן ({voices[0].name})</option>
+              {voices.map(v => (
+                <option key={v.voiceURI} value={v.voiceURI}>{v.natural ? '✨ ' : ''}{v.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field-row">
+            <span>קצב דיבור: {settings.rate.toFixed(2)} {settings.rate < 0.95 ? '(לאט יותר)' : settings.rate > 1.05 ? '(מהר יותר)' : '(רגיל)'}</span>
+            <input
+              type="range" min="0.7" max="1.2" step="0.05" value={settings.rate}
+              onChange={e => update({ rate: Number(e.target.value) })}
+            />
+          </label>
+          <div className="btn-row">
+            <button className="btn-main" onClick={() => speakSample()}>▶️ השמעת דוגמה</button>
+          </div>
+          {!hasNatural && (
+            <div className="quota-expired">
+              💡 הקולות שמותקנים בדפדפן הזה ישנים ונשמעים "רובוטיים". ל<b>עברית טבעית</b> פתחו את האתר
+              ב-<b>Microsoft Edge</b> — שם יש את הקולות Hila ו-Avri (Natural), בחינם וללא התקנה.
+            </div>
+          )}
+        </>
+      )}
+      <div className="hint-text">
+        💡 ההקראה עצמה שופרה: מספרים נקראים כמילים בעברית נכונה ("שתי בננות", "חמישה שקלים",
+        "שלוש ועוד ארבע"), בלי אמוג׳י ובלי "ילד/ה", והעידודים בלשון בן או בת לפי הילד/ה.
+      </div>
+    </div>
+  );
+}
+
+// A daily practice reminder: a calendar file (works everywhere, even when the
+// site is closed) plus an in-app nudge while the site is open.
+function ReminderSection({ children }) {
+  const [rem, setRem] = useState(null);
+  const [perm, setPerm] = useState(() => (notificationsSupported() ? Notification.permission : 'unsupported'));
+
+  useEffect(() => { fetchParentConfig().then(c => setRem(c.reminder)).catch(() => {}); }, []);
+
+  async function update(patch) {
+    const next = { ...rem, ...patch };
+    setRem(next);
+    try { await saveParentConfig({ reminder: next }); } catch {}
+  }
+
+  if (!rem) return null;
+  const names = (children || []).map(c => c.name).join(' ו');
+  const days = rem.days || [];
+
+  return (
+    <div className="section">
+      <h2>⏰ תזכורת יומית לתרגול</h2>
+      <label className={`muldiv-toggle ${rem.enabled ? 'on' : ''}`}>
+        <input type="checkbox" checked={!!rem.enabled} onChange={e => update({ enabled: e.target.checked })} />
+        <span className="muldiv-text">{rem.enabled ? `התזכורת פעילה — בשעה ${rem.time}` : 'התזכורת כבויה'}</span>
+      </label>
+      <div className="field-row inline">
+        <span>שעה</span>
+        <input type="time" value={rem.time} onChange={e => update({ time: e.target.value })} />
+      </div>
+      <div className="chip-row">
+        {DAY_NAMES_HE.map((n, i) => (
+          <button
+            key={i}
+            className={`chip ${days.includes(i) ? 'on' : ''}`}
+            onClick={() => update({ days: days.includes(i) ? days.filter(d => d !== i) : [...days, i].sort() })}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+      <div className="btn-row">
+        <button
+          className="btn-main"
+          onClick={() => downloadTextFile(buildReminderIcs({ time: rem.time, days, names }), 'kidslearn-reminder.ics', 'text/calendar')}
+        >
+          📅 הוספה ליומן (קובץ .ics)
+        </button>
+        {perm !== 'unsupported' && perm !== 'granted' && (
+          <button className="btn-soft" onClick={async () => setPerm(await requestNotifyPermission())}>
+            🔔 אישור התראות בדפדפן
+          </button>
+        )}
+        {perm === 'granted' && <span className="hint-inline">🔔 התראות הדפדפן מאושרות</span>}
+      </div>
+      <div className="hint-text">
+        💡 הדרך הבטוחה: קובץ היומן נפתח ביומן של הטלפון/המחשב ומזכיר בכל יום שנבחר — גם כשהאתר סגור.
+        בנוסף, כשהאתר פתוח אחרי השעה שנבחרה מופיעה תזכורת במסך הבית (והתראת דפדפן, אם אושרה).
+      </div>
+    </div>
+  );
+}
+
+// The data lives only in this browser — a backup file protects it from a
+// browser clean-up and moves it to another device.
+function BackupSection({ onRestored }) {
+  const [msg, setMsg] = useState(null);
+
+  async function exportNow() {
+    const data = await exportAllData();
+    downloadTextFile(JSON.stringify(data, null, 2), `kidslearn-backup-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
+    setMsg('✓ קובץ הגיבוי ירד למכשיר');
+  }
+
+  async function importFile(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      const text = await f.text();
+      if (!window.confirm('לשחזר מהקובץ? הנתונים הנוכחיים במכשיר הזה יוחלפו.')) return;
+      const r = await importAllData(JSON.parse(text));
+      setMsg(`✓ שוחזר: ${r.children} ילדים. המסך נטען מחדש...`);
+      setTimeout(() => onRestored?.(), 800);
+    } catch (err) {
+      setMsg('❌ ' + err.message);
+    } finally {
+      e.target.value = '';
+    }
+  }
+
+  return (
+    <div className="section">
+      <h2>💾 גיבוי והעברה למכשיר אחר</h2>
+      <p className="section-intro">
+        כל הנתונים (ילדים, היסטוריה, מדבקות, אוסף הטעויות, הגדרות ההורים) נשמרים בדפדפן של המכשיר הזה בלבד.
+        גיבוי מדי פעם מגן מפני ניקוי הדפדפן, והקובץ מאפשר להמשיך מאותו מקום במחשב או בטלפון אחר.
+      </p>
+      <div className="btn-row">
+        <button className="btn-main" onClick={exportNow}>⬇️ הורדת גיבוי</button>
+        <label className="btn-soft file-btn">
+          ⬆️ שחזור מקובץ
+          <input type="file" accept="application/json,.json" onChange={importFile} hidden />
+        </label>
+      </div>
+      {msg && <div className="hint-text">{msg}</div>}
+    </div>
+  );
+}
+
+// ── History, grouped by day ─────────────────────────────────────────────────
+const SUBJECT_BADGE = { math: '➕ חשבון', hebrew: '🔤 עברית', english: '🇬🇧 אנגלית' };
+const DAYS_PER_PAGE = 14;
+
+function HistorySection({ history }) {
+  const [expanded, setExpanded] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const [shown, setShown] = useState(DAYS_PER_PAGE);
+
+  const list = [...history].reverse().filter(s => filter === 'all' || (s.subject || 'math') === filter);
+  const groups = [];
+  for (const s of list) {
+    const d = s.date || String(s.savedAt || '').slice(0, 10);
+    let g = groups[groups.length - 1];
+    if (!g || g.date !== d) { g = { date: d, sessions: [] }; groups.push(g); }
+    g.sessions.push(s);
+  }
+  const visible = groups.slice(0, shown);
+  const subjectsPresent = [...new Set(history.map(s => s.subject || 'math'))];
+  const firstTry = (results) => results.filter(r => r.firstAttemptCorrect !== false && r.correct).length;
+
+  return (
+    <div className="section">
+      <h2>📚 היסטוריית מפגשים ({history.length})</h2>
+      {subjectsPresent.length > 1 && (
+        <div className="chip-row">
+          <button className={`chip ${filter === 'all' ? 'on' : ''}`} onClick={() => setFilter('all')}>הכל</button>
+          {subjectsPresent.map(s => (
+            <button key={s} className={`chip ${filter === s ? 'on' : ''}`} onClick={() => setFilter(s)}>{SUBJECT_BADGE[s] || s}</button>
+          ))}
+        </div>
+      )}
+      <div className="sessions-list">
+        {visible.map(g => {
+          const total = g.sessions.reduce((n, s) => n + (s.results || []).length, 0);
+          const ok = g.sessions.reduce((n, s) => n + firstTry(s.results || []), 0);
+          return (
+            <div key={g.date} className="history-day">
+              <div className="history-day-head">
+                <span>{new Date(`${g.date}T12:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+                <span className="history-day-stats">
+                  {g.sessions.length} מפגשים · {total} תרגילים · {total ? Math.round(ok / total * 100) : 0}% בניסיון ראשון
+                </span>
+              </div>
+              {g.sessions.map((s, i) => {
+                const correctCount = (s.results || []).filter(r => r.correct).length;
+                const n = (s.results || []).length || 1;
+                const sessionId = `${s.savedAt}-${g.date}-${i}`;
+                const isOpen = expanded === sessionId;
+                return (
+                  <div key={sessionId} className="session-item">
+                    <button className="session-summary" onClick={() => setExpanded(isOpen ? null : sessionId)}>
+                      <span className="session-date">
+                        {new Date(s.savedAt).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                        {' · '}
+                        <span className="session-subject">
+                          {SUBJECT_BADGE[s.subject || 'math'] || s.subject}{s.practice ? ' · 🔁 תרגול טעויות' : ''}
+                        </span>
+                      </span>
+                      <span className="session-score">
+                        {correctCount}/{n} ({Math.round(correctCount / n * 100)}%)
+                      </span>
+                      <span className="expand-icon">{isOpen ? '▼' : '◀'}</span>
+                    </button>
+                    {isOpen && (
+                      <div className="session-details">
+                        {(s.results || []).map((r, j) => {
+                          const noMistake = r.firstAttemptCorrect !== false && r.correct;
+                          const corrected = r.firstAttemptCorrect === false && r.correct;
+                          const cls = noMistake ? 'correct' : corrected ? 'corrected' : 'wrong';
+                          const icon = noMistake ? '✅' : corrected ? '⚠️' : '❌';
+                          return (
+                            <div key={j} className={`detail-row ${cls}`}>
+                              <span className="d-icon">{icon}</span>
+                              <span className="d-q" dir={r.dir || 'rtl'}>{String(r.question || '').split('\n')[0]}</span>
+                              <span className="d-ans">תשובה: <strong>{/^[<>=]$/.test(String(r.answer)) ? <span dir="ltr" style={{ unicodeBidi: 'isolate' }}>{r.answer}</span> : r.answer}</strong></span>
+                              <span className="d-att">{r.attempts} ניסיונות</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+        {groups.length > shown && (
+          <button className="btn-soft" onClick={() => setShown(n => n + DAYS_PER_PAGE)}>הצגת ימים נוספים</button>
+        )}
+        {history.length === 0 && (
+          <div className="empty-state">אין עדיין מפגשים שמורים</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ParentsScreen({ onBack }) {
   const [children, setChildren] = useState([]);
   const [activeChild, setActiveChild] = useState('son');
   const [stats, setStats] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [expandedSession, setExpandedSession] = useState(null);
 
   useEffect(() => {
     fetchChildren()
@@ -554,6 +956,11 @@ export default function ParentsScreen({ onBack }) {
 
           <MagicBoxSection />
 
+          <TrackSwitchSection
+            profile={activeProfile}
+            onSaved={(child) => setChildren(cs => cs.map(c => (c.id === child.id ? child : c)))}
+          />
+
           <InsightsSection child={activeChild} childName={childName} />
 
           <ProgressSection profile={activeProfile} progress={stats.progress} />
@@ -574,6 +981,11 @@ export default function ParentsScreen({ onBack }) {
           />
 
           <ActivityChart history={history} />
+
+          {IS_WEB && <ParentReportSection children={children} />}
+          {IS_WEB && <ReminderSection children={children} />}
+          {IS_WEB && <VoiceSection />}
+          {IS_WEB && <BackupSection onRestored={() => window.location.reload()} />}
 
           {!IS_WEB && (
             <div className="section">
@@ -670,56 +1082,7 @@ export default function ParentsScreen({ onBack }) {
             </div>
           </div>
 
-          <div className="section">
-            <h2>📚 היסטוריית מפגשים ({history.length})</h2>
-            <div className="sessions-list">
-              {[...history].reverse().map((s, i) => {
-                const correctCount = s.results.filter(r => r.correct).length;
-                const sessionId = `${s.savedAt}-${i}`;
-                const isOpen = expandedSession === sessionId;
-                return (
-                  <div key={sessionId} className="session-item">
-                    <button
-                      className="session-summary"
-                      onClick={() => setExpandedSession(isOpen ? null : sessionId)}
-                    >
-                      <span className="session-date">
-                        {new Date(s.savedAt).toLocaleDateString('he-IL', {
-                          day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-                        })}
-                      </span>
-                      <span className="session-score">
-                        {correctCount}/{s.results.length}
-                        ({Math.round(correctCount / s.results.length * 100)}%)
-                      </span>
-                      <span className="expand-icon">{isOpen ? '▼' : '◀'}</span>
-                    </button>
-                    {isOpen && (
-                      <div className="session-details">
-                        {s.results.map((r, j) => {
-                          const noMistake = r.firstAttemptCorrect !== false && r.correct;
-                          const corrected = r.firstAttemptCorrect === false && r.correct;
-                          const cls = noMistake ? 'correct' : corrected ? 'corrected' : 'wrong';
-                          const icon = noMistake ? '✅' : corrected ? '⚠️' : '❌';
-                          return (
-                            <div key={j} className={`detail-row ${cls}`}>
-                              <span className="d-icon">{icon}</span>
-                              <span className="d-q" dir={r.dir || 'rtl'}>{r.question.split('\n')[0]}</span>
-                              <span className="d-ans">תשובה: <strong>{/^[<>=]$/.test(String(r.answer)) ? <span dir="ltr" style={{ unicodeBidi: 'isolate' }}>{r.answer}</span> : r.answer}</strong></span>
-                              <span className="d-att">{r.attempts} ניסיונות</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {history.length === 0 && (
-                <div className="empty-state">אין עדיין מפגשים שמורים</div>
-              )}
-            </div>
-          </div>
+          <HistorySection history={history} />
         </>
       )}
     </div>

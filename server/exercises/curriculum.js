@@ -57,9 +57,59 @@ export const PREP_TRACKS = {
       'אוצר מילים וכתיבה',
     ],
   },
+
+  // ── School-year tracks (מסלולי שנת הלימודים) ─────────────────────────────
+  // The two tracks above are SUMMER preparation. Once the school year starts
+  // the child follows the grade's own annual curriculum (תכנית המתמטיקה
+  // לכיתות א-ב, 2023): a first grader builds up to 20, then to 100; a second
+  // grader adds and subtracts with regrouping, meets the times tables (2, 5,
+  // 10 first, then the whole table) and the thousands.
+  grade_a: {
+    label: 'כיתה א׳',
+    shortLabel: 'כיתה א׳',
+    mathStages: 4,
+    hebrewStages: 4,
+    questionsPerSession: 15,
+    stageNames: [
+      'מספרים עד 20, חיבור וחיסור עד 10',
+      'חיבור וחיסור עד 20 — מעבר העשרת',
+      'המבנה העשרוני עד 100',
+      'חיבור וחיסור עד 100 ללא המרה',
+    ],
+    hebrewStageNames: [
+      'הכרת האותיות',
+      'צליל פותח',
+      'אותיות בתוך מילים',
+      'קריאה ראשונה',
+    ],
+  },
+  grade_b: {
+    label: 'כיתה ב׳',
+    shortLabel: 'כיתה ב׳',
+    mathStages: 4,
+    hebrewStages: 2,
+    questionsPerSession: 20,
+    stageNames: [
+      'חיבור וחיסור עד 100 עם המרה',
+      'כפל ראשון — לוחות 2, 5 ו-10',
+      'כפל וחילוק בתחום ה-100',
+      'מספרים עד 1000',
+    ],
+    hebrewStageNames: [
+      'קריאת מילים',
+      'אוצר מילים וכתיבה',
+    ],
+  },
 };
 
 export const VALID_GRADES = Object.keys(PREP_TRACKS);
+
+// Summer prep track → the school-year track it leads into. The parents' area
+// offers this switch once the year has started.
+export const NEXT_TRACK = { gan_to_a: 'grade_a', a_to_b: 'grade_b', grade_a: 'grade_b' };
+// Tracks where multiplication/division is part of the curriculum itself (not
+// behind the parent's "already learned mul/div" switch).
+export const MUL_BUILT_IN_TRACKS = ['grade_b'];
 
 export function sanitizeGrade(grade) {
   return VALID_GRADES.includes(grade) ? grade : null;

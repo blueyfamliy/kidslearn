@@ -12,7 +12,7 @@
   "categories": ["education", "kids"],
   "icons": [
     {
-      "src": "https://raw.githubusercontent.com/deanavraham-bit/kidslearn/main/build/icon.png",
+      "src": "https://raw.githubusercontent.com/blueyfamliy/kidslearn/main/build/icon.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

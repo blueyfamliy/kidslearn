@@ -380,3 +380,45 @@
   font-weight: 800;
   cursor: pointer;
 }
+
+/* ── Web-only parent tools (report, reminder, voice, backup) ─────────────── */
+.section-intro { color: #607d8b; line-height: 1.7; margin: 0; font-size: 0.95rem; }
+.field-row { display: flex; flex-direction: column; gap: 6px; font-weight: 600; color: #455a64; font-size: 0.9rem; }
+.field-row input[type="text"], .field-row select, .field-row input[type="time"] {
+  border: 2px solid #e0e0e0; border-radius: 10px; padding: 10px 12px;
+  font-size: 1rem; font-family: inherit; background: #fff; color: #333;
+}
+.field-row input[type="range"] { width: 100%; accent-color: var(--purple); }
+.field-row.inline { flex-direction: row; align-items: center; gap: 12px; }
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  background: #f0f4ff; color: #5c6bc0; border: 2px solid transparent; border-radius: 20px;
+  padding: 6px 14px; font-weight: 700; font-size: 0.9rem; cursor: pointer;
+}
+.chip.on { background: var(--purple); color: #fff; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.btn-main {
+  background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; border: none; border-radius: 12px;
+  padding: 11px 20px; font-size: 1rem; font-weight: 800; cursor: pointer; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 6px; font-family: inherit;
+}
+.btn-soft {
+  background: #eceff1; color: #37474f; border: none; border-radius: 12px; padding: 11px 18px;
+  font-size: 0.95rem; font-weight: 700; cursor: pointer; font-family: inherit;
+}
+.btn-soft:disabled { opacity: 0.5; cursor: default; }
+.file-btn { display: inline-flex; align-items: center; }
+.hint-inline { color: #2e7d32; font-weight: 700; font-size: 0.9rem; }
+.report-preview {
+  background: #f7f8fc; border-radius: 12px; padding: 14px; white-space: pre-wrap; font-family: inherit;
+  font-size: 0.9rem; line-height: 1.6; color: #333; direction: rtl; max-height: 320px; overflow: auto; margin: 0;
+}
+.track-switch { background: linear-gradient(135deg, #fff8e1, #ffe0b2); border-radius: 14px; padding: 16px; }
+.track-switch p { margin: 0; color: #5d4037; line-height: 1.7; }
+.history-day { display: flex; flex-direction: column; gap: 6px; }
+.history-day-head {
+  display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
+  font-weight: 700; color: #455a64; padding: 8px 4px 2px; border-top: 1px dashed #e0e0e0; margin-top: 4px;
+}
+.history-day-stats { font-size: 0.85rem; color: #78909c; font-weight: 600; }
+.session-subject { font-size: 0.85rem; color: #5c6bc0; font-weight: 700; }

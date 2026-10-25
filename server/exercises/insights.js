@@ -8,8 +8,8 @@ import { maxStage, stageName } from './curriculum.js';
 // parent) thinks about them, not the way the generators are organized.
 export const TOPIC_FAMILIES = {
   math: [
-    { key: 'addition', label: 'חיבור', types: ['addition', 'addition_10', 'addition_20', 'addition_30', 'visual_add', 'complete', 'complete_10', 'complete_20', 'round_tens_add', 'two_digit_add', 'word_add'] },
-    { key: 'subtraction', label: 'חיסור', types: ['subtraction', 'subtraction_10', 'subtraction_20', 'subtraction_30', 'visual_sub', 'round_tens_sub', 'two_digit_sub', 'word_sub'] },
+    { key: 'addition', label: 'חיבור', types: ['addition', 'addition_10', 'addition_20', 'addition_30', 'visual_add', 'complete', 'complete_10', 'complete_20', 'round_tens_add', 'two_digit_add', 'two_digit_add_carry', 'three_digit_add', 'word_add'] },
+    { key: 'subtraction', label: 'חיסור', types: ['subtraction', 'subtraction_10', 'subtraction_20', 'subtraction_30', 'visual_sub', 'round_tens_sub', 'two_digit_sub', 'two_digit_sub_borrow', 'three_digit_sub', 'word_sub'] },
     { key: 'place_value', label: 'המבנה העשרוני (עשרות ואחדות)', types: ['tens_in_number', 'ones_in_number', 'build_tens_ones', 'expanded_form', 'hundreds_in_number', 'build_hundreds', 'expanded_form_3'] },
     { key: 'number_sense', label: 'מושג המספר והשוואה', types: ['compare', 'biggest_number', 'smallest_number', 'number_after', 'number_before', 'compare_quantities', 'even_odd', 'count_objects', 'count_category'] },
     { key: 'ordinals', label: 'מספרים סודרים', types: ['ordinal_position'] },
@@ -20,7 +20,7 @@ export const TOPIC_FAMILIES = {
     { key: 'sequences', label: 'סדרות, דילוגים וחוקיות', types: ['sequence', 'skip_count', 'skip_count_back', 'skip_count_100', 'pattern'] },
     { key: 'missing', label: 'מספר חסר (שוויונות)', types: ['missing_number'] },
     { key: 'geometry', label: 'גאומטריה', types: ['geo_sides', 'geo_corners', 'geo_identify', 'geo_count_sides_compare', 'geo_count'] },
-    { key: 'multiplication', label: 'כפל וחילוק', types: ['repeated_add', 'mul_div_facts'] },
+    { key: 'multiplication', label: 'כפל וחילוק', types: ['repeated_add', 'mul_div_facts', 'mul_table', 'div_table'] },
   ],
   hebrew: [
     { key: 'letters', label: 'הכרת האותיות', types: ['name_letter', 'find_letter', 'odd_one_out', 'type_letter'] },
@@ -156,9 +156,15 @@ export function analyzeSubject({ sessions, subject, profile, stage }) {
 // "האם הוא מתקדם בדרגה או שכדאי לעבור לנושא חדש?".
 function newTopicsText(subject, profile) {
   if (subject === 'math') {
+    if (profile.grade === 'grade_b') {
+      return 'כל שלבי כיתה ב׳ נשלטים — מצוין! ממשיכים לבסס את לוח הכפל והמספרים עד 1000; חומר כיתה ג׳ (כפל וחילוק מלאים, מספרים עד 10,000) יתווסף כשיגיע הזמן.';
+    }
+    if (profile.grade === 'grade_a') {
+      return 'כל שלבי כיתה א׳ נשלטים! אפשר לעבור למסלול "כיתה ב׳" (באזור ההורים או בעריכת הילד/ה) — שם מחכים חיבור וחיסור עם המרה ולוח הכפל.';
+    }
     return profile.grade === 'a_to_b'
-      ? 'כל שלבי ההכנה לכיתה ב׳ נשלטים. הצעד הבא הוא נושאים חדשים מתכנית כיתה ב׳ — כפל, קריאת שעון וחישובי כסף — שנפתחים כשלב חדש עם שיעורי היכרות.'
-      : 'כל שלבי ההכנה לכיתה א׳ נשלטים! אפשר לשקול לעבור למסלול "עולה לכיתה ב׳" (בעריכת הילד/ה) — שם מחכים חיבור וחיסור גדולים יותר והמבנה העשרוני.';
+      ? 'כל שלבי ההכנה לכיתה ב׳ נשלטים. הצעד הבא הוא המסלול השנתי "כיתה ב׳" (באזור ההורים) — חיבור וחיסור עם המרה, לוח הכפל, שעון וכסף.'
+      : 'כל שלבי ההכנה לכיתה א׳ נשלטים! אפשר לעבור למסלול השנתי "כיתה א׳" (באזור ההורים) — שם מחכים חיבור וחיסור עד 20 והמבנה העשרוני.';
   }
   if (subject === 'hebrew') {
     return 'שלבי הקריאה הבסיסיים נשלטים — הצעד הבא הוא קריאת מילים ארוכות ומשפטים קצרים. בינתיים סולם העברית ממשיך לאתגר עם מילים קשות יותר.';
