@@ -154,15 +154,20 @@ export function toSpokenHebrew(text, gender = _gender) {
   //    "חמישה שקלים"); with no noun after, the last plural noun in the sentence
   //    decides ("9 ממתקים … עוד 11" → "אחד עשר"); otherwise abstract feminine.
   //    Prefix letters glued with a hyphen ("ל-10", "מ-3", "ב-5") stay glued.
-  s = s.replace(/(?:([בלמוכשה])-)?(\d{1,4})(?!\d)(\s+[א-ת]+)?/g, (m, prefix, num, nextRaw, offset, whole) => {
+  //    The "next word" must be a real word (2+ letters) so "מ-5 ל-10" does not
+  //    swallow the "ל" of the second number as a noun.
+  s = s.replace(/(?:([בלמוכשה])-)?(\d{1,4})(?!\d)(\s+[א-ת]{2,})?/g, (m, prefix, num, nextRaw, offset, whole) => {
     const n = Number(num);
     const next = nextRaw ? nextRaw.trim() : '';
     let g = pluralGender(next);
     if (!g) {
+      // "ליקט עוד 11" — the counted noun came earlier in the sentence; only
+      // this "עוד N" shape looks back, so "מ-5 ל-10" stays abstract (feminine).
       const before = whole.slice(0, offset).split(/[.?!]/).pop() || '';
-      const words = before.split(/\s+/).reverse();
-      const anchor = words.find(w => pluralGender(w));
-      g = anchor ? pluralGender(anchor) : null;
+      if (/(^|\s)ו?עוד\s*$/.test(before)) {
+        const anchor = before.split(/\s+/).reverse().find(w => pluralGender(w));
+        g = anchor ? pluralGender(anchor) : null;
+      }
     }
     const words = numberToHebrew(n, g || 'f', !!pluralGender(next));
     const out = prefix ? `${prefix}${words}` : words;
@@ -234,8 +239,22 @@ export function saveTtsSettings({ voiceURI, rate } = {}) {
   if (rate !== undefined) writeLS(KEY_RATE, rate);
 }
 
+// Voices that failed to produce sound in this session (never started, or
+// errored). They are skipped for the rest of the session so every question
+// does not pay the same timeout again.
+const _badVoices = new Set();
+
+// Last few speech events, shown in the parents' voice section so a problem
+// ("the site stopped talking") can be diagnosed from the family's own browser.
+const _status = [];
+function note(msg) {
+  _status.push(`${new Date().toLocaleTimeString('he-IL')} ${msg}`);
+  if (_status.length > 6) _status.shift();
+}
+export function getTtsStatus() { return [..._status]; }
+
 async function pickVoice(lang) {
-  const voices = await getVoicesAsync();
+  const voices = (await getVoicesAsync()).filter(v => !_badVoices.has(v.voiceURI));
   if (!voices.length) return null;
   if (lang === 'he') {
     const wanted = readLS(KEY_VOICE);
@@ -253,12 +272,21 @@ async function pickVoice(lang) {
   return en.sort((a, b) => s(b) - s(a))[0];
 }
 
-function speakViaWebAPI(text, lang = 'he', onEnd = null) {
+// How long we wait for the voice to actually START before declaring it dead
+// and moving to the next one. Edge's online voices need a network round trip.
+const START_TIMEOUT_MS = 3000;
+const MAX_VOICE_ATTEMPTS = 3;
+
+function speakViaWebAPI(text, lang = 'he', onEnd = null, attempt = 0) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) { onEnd?.(); return; }
   const cleaned = WEB && lang !== 'en' ? toSpokenHebrew(text) : cleanForSpeech(text);
   if (!cleaned) { onEnd?.(); return; }
+  const ss = window.speechSynthesis;
   const seq = _seqId;
-  window.speechSynthesis.cancel();
+  // Only interrupt when something is actually playing: Edge's online
+  // ("Natural") voices can go silent for the rest of the page after a
+  // cancel(), so an idle engine is left alone.
+  if (ss.speaking || ss.pending) ss.cancel();
   pickVoice(lang === 'en' ? 'en' : 'he').then(voice => {
     if (seq !== _seqId) { onEnd?.(); return; }   // superseded while voices loaded
     const utter = new SpeechSynthesisUtterance(cleaned);
@@ -271,11 +299,50 @@ function speakViaWebAPI(text, lang = 'he', onEnd = null) {
     utter.pitch = natural ? 1 : 1.05;
     utter.volume = 1;
     if (voice) { utter.voice = voice; utter.lang = voice.lang; }
-    utter.onend = () => { if (_currentUtter === utter) _currentUtter = null; onEnd?.(); };
-    utter.onerror = () => { if (_currentUtter === utter) _currentUtter = null; onEnd?.(); };
+
+    let started = false;
+    let settled = false;
+    let watchdog = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(watchdog);
+      if (_currentUtter === utter) _currentUtter = null;
+      onEnd?.();
+    };
+    // The chosen voice produced nothing: blacklist it for this session and
+    // say the same text with the next-best voice (finally: no voice, lang only).
+    const giveUpOnVoice = (why) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(watchdog);
+      if (_currentUtter === utter) _currentUtter = null;
+      note(`הקול "${voice ? voice.name : 'ברירת מחדל'}" לא ניגן (${why})`);
+      console.warn('[TTS] voice failed:', voice?.name, why);
+      if (voice) _badVoices.add(voice.voiceURI);
+      if (seq === _seqId && attempt + 1 < MAX_VOICE_ATTEMPTS && (voice || attempt === 0)) {
+        speakViaWebAPI(text, lang, onEnd, attempt + 1);
+      } else {
+        onEnd?.();
+      }
+    };
+    utter.onstart = () => { started = true; clearTimeout(watchdog); if (attempt > 0 || !_status.length) note(`מדבר עם "${voice ? voice.name : 'ברירת מחדל'}"`); };
+    utter.onend = finish;
+    utter.onerror = (e) => {
+      const reason = e?.error || 'error';
+      if (reason === 'interrupted' || reason === 'canceled') return finish();   // we cancelled it ourselves
+      giveUpOnVoice(reason);
+    };
     _currentUtter = utter;
-    // A tiny delay after cancel() avoids the Chrome bug where the new utterance is swallowed.
-    setTimeout(() => { if (seq === _seqId) window.speechSynthesis.speak(utter); else onEnd?.(); }, 40);
+    // A tiny delay after cancel() avoids the Chrome bug where the new utterance
+    // is swallowed; resume() clears the "stuck paused" state Chrome sometimes
+    // keeps after a cancel.
+    setTimeout(() => {
+      if (seq !== _seqId) { onEnd?.(); return; }
+      try { ss.resume(); } catch {}
+      ss.speak(utter);
+      watchdog = setTimeout(() => { if (!started && seq === _seqId) { try { ss.cancel(); } catch {} giveUpOnVoice('לא התחיל'); } }, START_TIMEOUT_MS);
+    }, 40);
   });
 }
 
@@ -287,7 +354,8 @@ export function stopSpeech() {
   }
   _currentUtter = null;
   if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
+    const ss = window.speechSynthesis;
+    if (ss.speaking || ss.pending) ss.cancel();   // see speakViaWebAPI: never cancel an idle engine
   }
 }
 

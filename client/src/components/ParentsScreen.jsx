@@ -4,7 +4,7 @@ import {
   fetchParentConfig, saveParentConfig, buildParentReport, exportAllData, importAllData,
 } from '../api';
 import { PREP_TRACKS, NEXT_TRACK, stageName, STREAK_TO_ADVANCE, HEBREW_STAGES, ENGLISH_STAGES } from '../../../server/exercises/curriculum.js';
-import { listHebrewVoices, getTtsSettings, saveTtsSettings, speakSample, stopSpeech } from '../lib/tts';
+import { listHebrewVoices, getTtsSettings, saveTtsSettings, speakSample, stopSpeech, getTtsStatus } from '../lib/tts';
 import { buildReminderIcs, downloadTextFile, requestNotifyPermission, notificationsSupported, DAY_NAMES_HE } from '../lib/reminder';
 import EmailSettings from './EmailSettings';
 import BgRemovalSettings from './BgRemovalSettings';
@@ -606,10 +606,12 @@ function ParentReportSection({ children }) {
 function VoiceSection() {
   const [voices, setVoices] = useState(null);
   const [settings, setSettings] = useState(() => getTtsSettings());
+  const [status, setStatus] = useState(() => getTtsStatus());
 
   useEffect(() => {
     listHebrewVoices().then(setVoices).catch(() => setVoices([]));
-    return () => stopSpeech();
+    const t = setInterval(() => setStatus(getTtsStatus()), 1000);   // live log while testing the sample
+    return () => { clearInterval(t); stopSpeech(); };
   }, []);
 
   function update(patch) {
@@ -648,6 +650,14 @@ function VoiceSection() {
           </label>
           <div className="btn-row">
             <button className="btn-main" onClick={() => speakSample()}>▶️ השמעת דוגמה</button>
+          </div>
+          {status.length > 0 && (
+            <pre className="report-preview tts-status">{status.join('\n')}</pre>
+          )}
+          <div className="hint-text">
+            🛟 אם הקול נעלם: קול שלא מצליח לנגן מדולג אוטומטית והשאלה נאמרת בקול הבא; כאן למעלה רואים איזה קול דיבר בפועל.
+            {' '}דפדפן: {/Edg\//.test(navigator.userAgent) ? 'Microsoft Edge' : /Chrome\//.test(navigator.userAgent) ? 'Chrome' : /Safari\//.test(navigator.userAgent) ? 'Safari' : 'אחר'}
+            {' '}· {voices.length} קולות עבריים.
           </div>
           {!hasNatural && (
             <div className="quota-expired">
