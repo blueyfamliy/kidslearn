@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import AnalogClock from './AnalogClock';
 import HebrewKeyboard from './HebrewKeyboard';
+import Counters, { countersFor } from './Counters';
 import { speakHebrew, speakEnglish, speakParts } from '../lib/tts';
 import './ExerciseCard.css';
 
@@ -265,7 +266,8 @@ export default function ExerciseCard({ exercise: ex, child, subject, onAnswer, o
           <AnalogClock h={ex.displayClock.h} m={ex.displayClock.m} size={170} />
         </div>
       )}
-      {ex.displayShape && !ex.displayClock && (
+      {/* When the pictures become tappable counters, the static row would be a duplicate. */}
+      {ex.displayShape && !ex.displayClock && !(isMath && countersFor(ex)?.auto) && (
         <div className={`big-shape ${ex.displayShape.length > 10 ? 'long' : ''}`}>
           {ex.displayShape}
         </div>
@@ -273,6 +275,9 @@ export default function ExerciseCard({ exercise: ex, child, subject, onAnswer, o
       {ex.displayImage && <div className="big-image">{ex.displayImage}</div>}
       {ex.displayLetter && <div className="big-letter">{ex.displayLetter}</div>}
       {ex.displayWord && !ex.displayLetter && <div className="big-word">{ex.displayWord}</div>}
+
+      {/* Hands-on counters: tap to count, cross out to subtract, add to build up. */}
+      {isMath && <Counters key={`c-${ex.id}-${ex.question}`} exercise={ex} disabled={!!feedback} />}
 
       <div className="ex-question-row">
         <div className={`ex-question ${longQuestion ? 'long-text' : ''}`} dir={ex.dir || 'rtl'}>{ex.question}</div>

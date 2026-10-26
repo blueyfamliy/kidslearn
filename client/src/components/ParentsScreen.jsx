@@ -4,7 +4,10 @@ import {
   fetchParentConfig, saveParentConfig, buildParentReport, exportAllData, importAllData,
 } from '../api';
 import { PREP_TRACKS, NEXT_TRACK, stageName, STREAK_TO_ADVANCE, HEBREW_STAGES, ENGLISH_STAGES } from '../../../server/exercises/curriculum.js';
-import { listHebrewVoices, getTtsSettings, saveTtsSettings, speakSample, stopSpeech, getTtsStatus } from '../lib/tts';
+import {
+  listHebrewVoices, getTtsSettings, saveTtsSettings, speakSample, stopSpeech, getTtsStatus,
+  getCloudVoiceConfig, saveCloudVoiceConfig, testCloudVoice, CLOUD_VOICES_HE,
+} from '../lib/tts';
 import { buildReminderIcs, downloadTextFile, requestNotifyPermission, notificationsSupported, DAY_NAMES_HE } from '../lib/reminder';
 import EmailSettings from './EmailSettings';
 import BgRemovalSettings from './BgRemovalSettings';
@@ -663,14 +666,86 @@ function VoiceSection() {
             <div className="quota-expired">
               💡 הקולות שמותקנים בדפדפן הזה ישנים ונשמעים "רובוטיים". ל<b>עברית טבעית</b> פתחו את האתר
               ב-<b>Microsoft Edge</b> — שם יש את הקולות Hila ו-Avri (Natural), בחינם וללא התקנה.
+              {/Windows/.test(navigator.userAgent) && !/Edg\//.test(navigator.userAgent) && (
+                <> <a className="btn-main" style={{ marginInlineStart: 8 }} href="microsoft-edge:https://kidslearn.fun/app/">🌐 פתיחה ב-Edge</a></>
+              )}
             </div>
           )}
         </>
       )}
+      <CloudVoiceBlock />
       <div className="hint-text">
         💡 ההקראה עצמה שופרה: מספרים נקראים כמילים בעברית נכונה ("שתי בננות", "חמישה שקלים",
         "שלוש ועוד ארבע"), בלי אמוג׳י ובלי "ילד/ה", והעידודים בלשון בן או בת לפי הילד/ה.
       </div>
+    </div>
+  );
+}
+
+// Optional cloud voice: the family's own Azure Speech key gives the neural
+// Hebrew voices (Hila/Avri) in every browser. Stored only in this browser.
+function CloudVoiceBlock() {
+  const [cfg, setCfg] = useState(() => getCloudVoiceConfig() || { key: '', region: 'westeurope', voice: CLOUD_VOICES_HE[0].id, enabled: true });
+  const [saved, setSaved] = useState(() => !!getCloudVoiceConfig());
+  const [msg, setMsg] = useState(null);
+  const [testing, setTesting] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+
+  async function test() {
+    setTesting(true); setMsg(null);
+    const r = await testCloudVoice(cfg);
+    setMsg(r.ok ? '✅ הקול עובד! לחצו "שמירה" כדי שהאתר ישתמש בו.' : `❌ ${r.error}`);
+    setTesting(false);
+  }
+  function save() {
+    const clean = saveCloudVoiceConfig(cfg);
+    setSaved(!!clean);
+    setMsg(clean ? '✅ נשמר. מעכשיו כל השאלות מוקראות בקול הזה (בדפדפן הזה).' : 'המפתח הוסר — חוזרים לקול הדפדפן.');
+  }
+  function remove() {
+    saveCloudVoiceConfig(null);
+    setCfg({ key: '', region: 'westeurope', voice: CLOUD_VOICES_HE[0].id, enabled: true });
+    setSaved(false);
+    setMsg('המפתח הוסר — חוזרים לקול הדפדפן.');
+  }
+
+  return (
+    <div className="cloud-voice">
+      <h3>☁️ קול עברי טבעי בכל דפדפן (Azure Speech)</h3>
+      <p className="section-intro">
+        אותם קולות Hila ו-Avri של Edge, גם בכרום ובטלפון — עם מפתח משלכם מ-Azure (חינם עד 500 אלף תווים בחודש,
+        הרבה מעבר לשימוש יומי). המפתח נשמר רק בדפדפן הזה. איך משיגים: <span dir="ltr">portal.azure.com</span> →
+        Create a resource → <b>Speech</b> → Pricing tier <b>Free F0</b> → Keys and Endpoint → KEY 1 + Region.
+      </p>
+      <div className="form-grid">
+        <label className="field-row full-width">
+          <span>מפתח (KEY 1) {saved && <small className="hint-inline">· שמור</small>}</span>
+          <div className="btn-row">
+            <input
+              type={showKey ? 'text' : 'password'} dir="ltr" value={cfg.key} autoComplete="off" spellCheck="false"
+              onChange={e => setCfg(c => ({ ...c, key: e.target.value }))} placeholder="32 תווים"
+              style={{ flex: '1 1 220px' }}
+            />
+            <button className="btn-soft" type="button" onClick={() => setShowKey(v => !v)}>{showKey ? '🙈' : '👁️'}</button>
+          </div>
+        </label>
+        <label className="field-row">
+          <span>אזור (Region)</span>
+          <input type="text" dir="ltr" value={cfg.region} onChange={e => setCfg(c => ({ ...c, region: e.target.value }))} placeholder="westeurope" />
+        </label>
+        <label className="field-row">
+          <span>קול</span>
+          <select value={cfg.voice} onChange={e => setCfg(c => ({ ...c, voice: e.target.value }))}>
+            {CLOUD_VOICES_HE.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="btn-row">
+        <button className="btn-soft" type="button" onClick={test} disabled={testing || !cfg.key}>{testing ? '⏳ בודק...' : '▶️ בדיקה'}</button>
+        <button className="btn-main" type="button" onClick={save} disabled={!cfg.key}>💾 שמירה</button>
+        {saved && <button className="btn-soft" type="button" onClick={remove}>🗑️ הסרה</button>}
+      </div>
+      {msg && <div className="hint-text">{msg}</div>}
     </div>
   );
 }

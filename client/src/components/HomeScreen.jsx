@@ -4,7 +4,10 @@ import AddChildModal from './AddChildModal';
 import RewardsModal from './RewardsModal';
 import { APP_VERSION } from '../version';
 import { reminderDue, maybeNotify } from '../lib/reminder';
+import { speechQuality } from '../lib/tts';
 import './HomeScreen.css';
+
+const EDGE_TIP_KEY = 'kidslearn:tts:edgeTipDismissed';
 
 const SUBJECT_DESC = {
   math: { desc: 'חשבון', tag: 'תרגילי חשבון', icon: '➕' },
@@ -36,11 +39,24 @@ export default function HomeScreen({ onSelect, onMistakes, onParents }) {
   const [pickingSubjectFor, setPickingSubjectFor] = useState(null);
   const [rewardsFor, setRewardsFor] = useState(null);
   const [reminder, setReminder] = useState(null);   // web: the parents' daily reminder
+  const [voiceTip, setVoiceTip] = useState(null);   // web: "the voice is robotic → open in Edge"
 
   useEffect(() => {
     if (!IS_WEB) return;
     fetchParentConfig().then(c => setReminder(c.reminder || null)).catch(() => {});
+    let dismissed = false;
+    try { dismissed = localStorage.getItem(EDGE_TIP_KEY) === '1'; } catch {}
+    if (!dismissed) {
+      speechQuality().then(q => {
+        if (!q.natural && !q.cloud) setVoiceTip(q);
+      }).catch(() => {});
+    }
   }, []);
+
+  function dismissVoiceTip() {
+    try { localStorage.setItem(EDGE_TIP_KEY, '1'); } catch {}
+    setVoiceTip(null);
+  }
 
   // Past the reminder time and someone hasn't practised yet → nudge (banner +
   // one browser notification a day, if the parent allowed notifications).
@@ -92,6 +108,18 @@ export default function HomeScreen({ onSelect, onMistakes, onParents }) {
         <div className="home-stars">⭐ KidsLearn ⭐ <span className="app-version">v{APP_VERSION}</span></div>
         <h1>ברוכים הבאים!</h1>
         <p>{!loading && children.length === 0 ? 'הוסיפו ילד/ה כדי להתחיל ✨' : 'מי רוצה ללמוד היום?'}</p>
+        {voiceTip && (
+          <div className="voice-tip">
+            <span>
+              🔊 {voiceTip.hasHebrew ? 'הקול העברי בדפדפן הזה נשמע רובוטי.' : 'בדפדפן הזה אין קול עברי.'}{' '}
+              ב-<b>Microsoft Edge</b> יש קול עברי טבעי, בחינם.
+            </span>
+            {voiceTip.isWindows && !voiceTip.isEdge && (
+              <a className="voice-tip-btn" href="microsoft-edge:https://kidslearn.fun/app/">🌐 פתיחה ב-Edge</a>
+            )}
+            <button type="button" className="voice-tip-close" onClick={dismissVoiceTip} aria-label="סגירה">✕</button>
+          </div>
+        )}
         {waiting.length > 0 && (
           <div className="reminder-banner">
             ⏰ זמן התרגול היומי! {waitingNames}{' '}

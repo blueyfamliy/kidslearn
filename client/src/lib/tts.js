@@ -359,6 +359,128 @@ export function stopSpeech() {
   }
 }
 
+// ── Cloud neural voice (optional, web) ──────────────────────────────────────
+// Azure Speech "Hila"/"Avri" are the very voices Edge ships for free, but a
+// key makes them available in EVERY browser (Chrome on Windows, phones).
+// The key is the family's own, stored only in this browser; audio is cached
+// per sentence so repeated questions and cheers cost nothing.
+const KEY_AZURE = 'kidslearn:tts:azure';
+export const CLOUD_VOICES_HE = [
+  { id: 'he-IL-HilaNeural', label: 'Hila — קול אישה' },
+  { id: 'he-IL-AvriNeural', label: 'Avri — קול גבר' },
+];
+const CLOUD_VOICE_EN = 'en-US-JennyNeural';
+const CLOUD_MAX_FAILURES = 3;     // after this many failures in a row, this session uses the browser voice
+const CLOUD_CACHE_LIMIT = 300;
+let _cloudFailures = 0;
+const _cloudCache = new Map();    // `${lang}|${voice}|${text}` → object URL
+
+export function getCloudVoiceConfig() {
+  try {
+    const c = JSON.parse(readLS(KEY_AZURE) || 'null');
+    return c && typeof c === 'object' && c.key
+      ? { region: 'westeurope', voice: CLOUD_VOICES_HE[0].id, enabled: true, ...c }
+      : null;
+  } catch { return null; }
+}
+export function saveCloudVoiceConfig(cfg) {
+  _cloudFailures = 0;
+  if (!cfg || !String(cfg.key || '').trim()) { writeLS(KEY_AZURE, null); return null; }
+  const clean = {
+    key: String(cfg.key).trim(),
+    region: String(cfg.region || 'westeurope').trim().toLowerCase().replace(/[^a-z0-9]/g, ''),
+    voice: CLOUD_VOICES_HE.some(v => v.id === cfg.voice) ? cfg.voice : CLOUD_VOICES_HE[0].id,
+    enabled: cfg.enabled !== false,
+  };
+  writeLS(KEY_AZURE, JSON.stringify(clean));
+  return clean;
+}
+function cloudActive() {
+  const c = getCloudVoiceConfig();
+  return c && c.enabled && _cloudFailures < CLOUD_MAX_FAILURES ? c : null;
+}
+const xmlEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+
+async function fetchCloudAudio(text, lang, cfg) {
+  const voice = lang === 'en' ? CLOUD_VOICE_EN : cfg.voice;
+  const key = `${lang}|${voice}|${text}`;
+  if (_cloudCache.has(key)) return _cloudCache.get(key);
+  const { rate } = getTtsSettings();
+  const pct = Math.round((rate - 1) * 100);
+  const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang === 'en' ? 'en-US' : 'he-IL'}">`
+    + `<voice name="${voice}"><prosody rate="${pct >= 0 ? '+' : ''}${pct}%">${xmlEscape(text)}</prosody></voice></speak>`;
+  const res = await fetch(`https://${cfg.region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+    method: 'POST',
+    headers: {
+      'Ocp-Apim-Subscription-Key': cfg.key,
+      'Content-Type': 'application/ssml+xml',
+      'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
+    },
+    body: ssml,
+  });
+  if (!res.ok) throw new Error(`Azure ${res.status}${res.status === 401 ? ' — מפתח לא תקין' : res.status === 404 ? ' — אזור (region) לא נכון' : ''}`);
+  const blob = await res.blob();
+  if (!blob.size) throw new Error('empty audio');
+  const url = URL.createObjectURL(blob);
+  if (_cloudCache.size >= CLOUD_CACHE_LIMIT) {
+    const first = _cloudCache.keys().next().value;
+    try { URL.revokeObjectURL(_cloudCache.get(first)); } catch {}
+    _cloudCache.delete(first);
+  }
+  _cloudCache.set(key, url);
+  return url;
+}
+
+function speakViaCloud(text, lang, cfg, onEnd) {
+  const seq = _seqId;
+  const spoken = lang === 'en' ? cleanForSpeech(text) : toSpokenHebrew(text);
+  if (!spoken) { onEnd?.(); return; }
+  fetchCloudAudio(spoken, lang, cfg).then(url => {
+    if (seq !== _seqId) { onEnd?.(); return; }
+    const audio = new Audio(url);
+    _currentAudio = audio;
+    audio.onended = () => { if (_currentAudio === audio) _currentAudio = null; onEnd?.(); };
+    audio.onerror = () => { if (_currentAudio === audio) _currentAudio = null; onEnd?.(); };
+    _cloudFailures = 0;
+    return audio.play();
+  }).catch(err => {
+    _cloudFailures++;
+    note(`קול הענן נכשל (${err?.message || err}) — עוברים לקול הדפדפן`);
+    console.warn('[TTS] cloud voice failed:', err?.message || err);
+    if (seq === _seqId) speakViaWebAPI(text, lang, onEnd);
+  });
+}
+
+/** Try the cloud voice with the given (unsaved) config; plays a sample on success. */
+export async function testCloudVoice(cfg) {
+  const c = { region: 'westeurope', voice: CLOUD_VOICES_HE[0].id, ...cfg, key: String(cfg?.key || '').trim() };
+  if (!c.key) return { ok: false, error: 'חסר מפתח' };
+  try {
+    stopSpeech();
+    const url = await fetchCloudAudio('שלום! זה הקול החדש של KidsLearn. לדנה היו 5 בלונים והיא קיבלה עוד 3. כמה בלונים יש לה עכשיו?', 'he', c);
+    const audio = new Audio(url);
+    _currentAudio = audio;
+    await audio.play();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
+/** What the browser can do for Hebrew — drives the "open in Edge" tip. */
+export async function speechQuality() {
+  const voices = await getVoicesAsync();
+  const he = voices.filter(isHebrewVoice);
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+  return {
+    hasHebrew: he.length > 0,
+    natural: he.some(v => voiceScore(v) >= 70),
+    cloud: !!cloudActive(),
+    isEdge: /Edg\//.test(ua),
+    isWindows: /Windows/.test(ua),
+  };
+}
+
 // `interrupt: false` lets the sequence player chain parts without each part
 // cancelling the previous one; `onEnd` fires when this part finishes.
 function speakText(text, lang, { interrupt = true, onEnd = null } = {}) {
@@ -367,8 +489,11 @@ function speakText(text, lang, { interrupt = true, onEnd = null } = {}) {
 
   if (interrupt) stopSpeech();
 
-  // The static web version has no server TTS proxy – use the browser voice.
+  // The static web version has no server TTS proxy – the family's cloud voice
+  // when one is configured, otherwise the browser voice.
   if (WEB) {
+    const cloud = cloudActive();
+    if (cloud) { speakViaCloud(text, lang, cloud, onEnd); return; }
     speakViaWebAPI(text, lang, onEnd);
     return;
   }
